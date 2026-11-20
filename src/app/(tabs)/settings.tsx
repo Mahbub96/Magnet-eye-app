@@ -87,10 +87,29 @@ export default function SettingsScreen() {
           onPress={() => router.push({ pathname: '/device-check', params: { from: 'settings' } })}
         />
       </Card>
+      <Card>
+        <Row title="Tracking mode" sub="Ruler. Camera tracking (ARCore) arrives in a later version." right="Ruler" tone="info" />
+      </Card>
+
       <Section title="About" />
-      <Text style={type.small}>
-        Magnet Eye {Application.nativeApplicationVersion ?? 'dev'} · swipe format v{FORMAT_VERSION} · MIT · open source
+      <Card>
+        <Row
+          title={`Magnet Eye ${Application.nativeApplicationVersion ?? 'dev'}`}
+          sub={`Swipe format v${FORMAT_VERSION} · API v1 · free and open source, MIT licence`}
+        />
+      </Card>
+      <Text style={[type.small, { lineHeight: 18 }]}>
+        Results are estimates with their uncertainty: a magnetisation pattern consistent with the measured field, not a
+        view inside the magnet. Scans are saved on this phone; the server forgets uploads after 30 minutes.
       </Text>
+      {__DEV__ ? (
+        <>
+          <Section title="Development" />
+          <Card>
+            <Row title="Design preview" sub="Every Figma screen, for review" right="›" onPress={() => router.push('/preview')} />
+          </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }
