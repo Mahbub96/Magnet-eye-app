@@ -111,6 +111,9 @@ export const useRecorder = create<State>((set, get) => ({
   setLine: (l) => set({ line: { ...get().line, ...l } }),
 
   startScan: async (name) => {
+    // One baseline at a time: a second tap must not start another recording, which would
+    // steal the first one's readings and reset an already started scan.
+    if (get().phase !== 'idle' || get().scan) return;
     set({ phase: 'baseline', message: 'Hold still: phone flat, top along the paper +y, magnet away' });
     MagnetCapture.startRecording();
     await sleep(BASELINE_MS);
@@ -143,7 +146,7 @@ export const useRecorder = create<State>((set, get) => ({
       });
       set({ scan, phase: 'ready', swipeCount: 0, last: null, message: null });
     } catch (e) {
-      set({ phase: 'idle', message: (e as Error).message });
+      set({ phase: get().scan ? 'ready' : 'idle', message: (e as Error).message });
     }
   },
 
@@ -227,7 +230,7 @@ export const useRecorder = create<State>((set, get) => ({
 
   finishScan: async () => {
     const { scan } = get();
-    if (!scan) return;
+    if (!scan || get().phase !== 'ready') return;
     set({ phase: 'endBaseline', message: 'Move the magnet away, put the phone back on the start mark' });
     await sleep(1500);
     MagnetCapture.startRecording();

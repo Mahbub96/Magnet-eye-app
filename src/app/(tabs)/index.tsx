@@ -25,7 +25,9 @@ import { color, space, type } from '../../ui/theme';
 import { Text } from '../../ui/Text';
 
 function Sparkline({ values, limit }: { values: number[]; limit: number }) {
-  const max = Math.max(limit * 0.25, ...values, 1);
+  // Scale to what is on screen (at least 100 µT), so the Earth's field alone is visible and
+  // the magnet's rise stands out; bars above the safe limit turn amber.
+  const max = Math.max(100, 1.2 * Math.max(0, ...values));
   return (
     <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 44, gap: 1 }}>
       {values.map((v, i) => (

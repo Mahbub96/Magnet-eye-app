@@ -30,7 +30,7 @@ export function measureBaseline(
 ): BaselineResult {
   const mag = rows(raw.mag, 7);
   const rot = rows(raw.rot, 5);
-  if (mag.length < 10 || rot.length < 5) throw new Error('Too few readings for a baseline');
+  if (mag.length < 10 || rot.length < 5) throw new Error('The sensors sent too few readings. Keep the app open and try again.');
   const bias = fixed?.androidBias ?? meanVec(mag.map((r) => [r[4], r[5], r[6]] as Vec3));
   const qs = rot.map((r) => [r[1], r[2], r[3], r[4]] as Quat);
   const qMean = meanQuat(qs);
