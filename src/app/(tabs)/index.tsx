@@ -9,7 +9,7 @@ import { getSetting, PROFILE } from '../../db/settings';
 import type { ResultSummary } from '../../db/sync';
 import { canScan } from '../../modules/capture/deviceCheck';
 import type { PhoneProfile } from '../../modules/capture/profile';
-import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
+import { BACKGROUND_MAX_UT, BOX_HEIGHT_MM, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { recalibrationReason } from '../../modules/capture/recalibrate';
 import { BASELINE_MS, rangeOf, SAFE_FRACTION, useLive, useRecorder } from '../../store/recorder';
 import { useSync } from '../../sync/useSync';
@@ -423,6 +423,11 @@ export default function ScanScreen() {
       </View>
       {r.line.z <= 0 ? (
         <Banner tone="warn" text="Enter the box height: how far the paper on the box top is above the table, in mm." />
+      ) : r.line.z < BOX_HEIGHT_MM[0] || r.line.z > BOX_HEIGHT_MM[1] ? (
+        <Banner
+          tone="warn"
+          text={`Box height ${r.line.z} mm (${(r.line.z / 10).toFixed(1)} cm) is unusual — check it is in mm. A 3–5 cm box is 30–50 mm.`}
+        />
       ) : null}
       <Text style={[type.small, { lineHeight: 18 }]}>
         Put the centre of the phone’s top edge on the start mark, press record, slide steadily along the ruler to the end

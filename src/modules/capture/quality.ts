@@ -49,10 +49,28 @@ export function baselineProblem(b: { tiltRad: number; fieldWorld: Vec3 }): strin
 }
 
 /** Problems with a recorded ruler swipe that make its positions untrustworthy. */
-export function swipeProblems(s: { maxTiltRad: number; motionFound: boolean }): string[] {
+export function swipeProblems(s: {
+  maxTiltRad: number;
+  motionFound: boolean;
+  /** Mean speed along the line (cm/s) and this phone's good range, when known. */
+  speedCmS?: number;
+  speedRange?: [number, number];
+}): string[] {
   const p: string[] = [];
+  // Ruler mode assumes a steady slide from start to end mark: a slide far outside the range
+  // (pauses, going back, recording long after the end) puts every reading in the wrong place.
+  if (s.speedCmS !== undefined && s.speedRange && s.motionFound) {
+    const [lo, hi] = s.speedRange;
+    if (s.speedCmS < lo / 2)
+      p.push(`Slide took too long (${s.speedCmS.toFixed(1)} cm/s): slide steadily at ${lo}–${hi} cm/s and stop right at the end mark.`);
+    else if (s.speedCmS > hi * 1.5)
+      p.push(`Slide too fast (${s.speedCmS.toFixed(1)} cm/s): aim for ${lo}–${hi} cm/s.`);
+  }
   if (s.maxTiltRad > FLAT_MAX_RAD)
     p.push(`Phone tilted ${deg(s.maxTiltRad).toFixed(0)}° during the swipe: keep it flat on the paper.`);
   if (!s.motionFound) p.push('No slide detected: slide the phone along the ruler between record and stop.');
   return p;
 }
+
+/** Box heights outside this range (mm) are probably a typing slip. */
+export const BOX_HEIGHT_MM: [number, number] = [5, 100];

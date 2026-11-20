@@ -17,7 +17,9 @@ import {
 } from '../db/scans';
 import { activeProfile, type CalibrationProfile } from '../db/profiles';
 import { sqliteRepo, swipeWasUploaded } from '../db/sync';
+import { getSetting, PROFILE } from '../db/settings';
 import { measureBaseline } from '../modules/capture/baseline';
+import type { PhoneProfile } from '../modules/capture/profile';
 import { apply, type Mat3 } from '../modules/capture/ironFit';
 import { buildSwipe, validateSwipe } from '../modules/capture/buildSwipe';
 import { baselineProblem, swipeProblems } from '../modules/capture/quality';
@@ -85,6 +87,13 @@ type State = {
   finishScan: () => Promise<void>;
   cancelScan: () => void;
 };
+
+/** This phone's good swipe speed (cm/s), measured on the first run; defaults otherwise. */
+function speedRange(): [number, number] {
+  const raw = getSetting(PROFILE);
+  const p = raw ? (JSON.parse(raw) as PhoneProfile) : null;
+  return [p?.speedMinCmS ?? 2, p?.speedMaxCmS ?? 10];
+}
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -226,6 +235,8 @@ export const useRecorder = create<State>((set, get) => ({
       const warnings = swipeProblems({
         maxTiltRad: swipe.stats.max_tilt_rad,
         motionFound: swipe.stats.motion_detected,
+        speedCmS: swipe.stats.mean_speed_m_s === null ? undefined : swipe.stats.mean_speed_m_s * 100,
+        speedRange: speedRange(),
       });
       const row = await saveSwipe(swipe);
       useSync.getState().kick(); // upload now if the server is reachable; queued otherwise
