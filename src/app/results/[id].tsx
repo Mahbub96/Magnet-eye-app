@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { FullResult } from '../../api/result';
@@ -7,9 +7,13 @@ import { readResult } from '../../db/export';
 import { getScan } from '../../db/scans';
 import { Banner, Button, Chip, Screen, Stat, Title } from '../../ui/components';
 import { ExportSheet } from '../../ui/ExportSheet';
-import { FieldView3D, type FieldViewHandle } from '../../ui/FieldView3D';
+import type { FieldViewHandle } from '../../ui/FieldView3D';
 import { Text } from '../../ui/Text';
 import { color, space, type } from '../../ui/theme';
+
+// The 3D view (three.js, GL) loads only when this screen opens, so a GL problem can never
+// stop the rest of the app from starting.
+const FieldView3D = lazy(() => import('../../ui/FieldView3D').then((m) => ({ default: m.FieldView3D })));
 
 const WARNINGS: Record<string, string> = {
   magnet_may_have_moved: 'The last swipe does not fit the earlier ones: the magnet or table may have moved.',
@@ -57,7 +61,9 @@ export default function ResultsScreen() {
             <Chip text={`Uncertainty ±${Math.round(result.relative_uncertainty * 100)}%`} tone={result.relative_uncertainty <= 0.15 ? 'good' : 'warn'} />
             <Chip text={`${result.swipes} swipes`} tone="info" />
           </View>
-          <FieldView3D ref={view} result={result} />
+          <Suspense fallback={<Banner tone="info" text="Loading the 3D view…" />}>
+            <FieldView3D ref={view} result={result} />
+          </Suspense>
           <Legend />
           <View style={{ flexDirection: 'row', gap: space.sm }}>
             <Stat label="Strength" value={moment.toFixed(2)} unit="A·m²" note={`± ${momentSigma.toFixed(2)}`} />
