@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0E1013",
+        "backgroundColor": "#0E1116",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -24,10 +24,19 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#0E1116"
+        }
+      ]
     ],
     "scheme": "magneteye",
-    "backgroundColor": "#0E1013",
+    "backgroundColor": "#0E1116",
     "platforms": [
       "android"
     ],

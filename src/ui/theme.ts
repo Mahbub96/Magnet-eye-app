@@ -1,19 +1,20 @@
-/** Design tokens from the Figma file "Magnet Eye – App UI" (dark, one accent, N/S in red/blue). */
+/** Design tokens read from the Figma file "Magnet Eye – App UI" (dark, one accent, N/S in red/blue).
+ * Font in Figma is Inter; the app uses the system font until fonts are bundled. */
 export const color = {
-  bg: '#0E1013',
-  surface: '#161A20',
-  surface2: '#1D222A',
-  border: '#262C36',
-  text: '#ECEEF2',
-  textDim: '#8B93A1',
-  textFaint: '#5D6573',
-  accent: '#7C95FF',
-  accentText: '#0E1013',
+  bg: '#0E1116',
+  surface: '#161A21',
+  surface2: '#1E232C',
+  border: '#2A303B',
+  text: '#ECEFF4',
+  textDim: '#8B94A5',
+  textFaint: '#5C6575',
+  accent: '#7C9CFF',
+  accentText: '#0E1116',
   good: '#3DD68C',
-  warn: '#F2B541',
-  bad: '#FF5C5C',
-  north: '#FF5C5C',
-  south: '#5B8CFF',
+  warn: '#F5B544',
+  bad: '#FF6B6B',
+  north: '#FF6B6B',
+  south: '#4DA3FF',
 } as const;
 
 export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 } as const;
