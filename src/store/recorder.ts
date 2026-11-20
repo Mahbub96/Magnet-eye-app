@@ -10,13 +10,16 @@ import {
   deleteLastSwipe,
   deleteScan,
   finishScan as finishScanRow,
+  listSwipes,
   newId,
   saveSwipe,
   type SwipeRow,
 } from '../db/scans';
+import { sqliteRepo, swipeWasUploaded } from '../db/sync';
 import { measureBaseline } from '../modules/capture/baseline';
 import { buildSwipe, validateSwipe } from '../modules/capture/buildSwipe';
 import { baselineProblem, swipeProblems } from '../modules/capture/quality';
+import { useSync } from '../sync/useSync';
 import type { Vec3 } from '../utils/quaternion';
 
 /** Stay under this share of the sensor range (Phase 1 pass bar, SAFE_FRACTION). */
@@ -199,6 +202,7 @@ export const useRecorder = create<State>((set, get) => ({
         motionFound: swipe.stats.motion_detected,
       });
       const row = await saveSwipe(swipe);
+      useSync.getState().kick(); // upload now if the server is reachable; queued otherwise
       const along = Math.abs(line.x1 - line.x0) >= Math.abs(line.y1 - line.y0);
       set({
         phase: 'ready',
@@ -217,7 +221,15 @@ export const useRecorder = create<State>((set, get) => ({
   redoLast: () => {
     const { scan, swipeCount, line } = get();
     if (!scan || swipeCount === 0) return;
+    // Check before deleting: the server cannot drop one swipe, so if it already has this one
+    // the scan starts a new server session and its other swipes are sent again.
+    const swipes = listSwipes(scan.id);
+    const uploaded = swipes.length > 0 && swipeWasUploaded(swipes[swipes.length - 1].id);
     deleteLastSwipe(scan.id);
+    if (uploaded) {
+      sqliteRepo.resetScan(scan.id);
+      useSync.getState().kick();
+    }
     const along = Math.abs(line.x1 - line.x0) >= Math.abs(line.y1 - line.y0);
     set({
       swipeCount: swipeCount - 1,

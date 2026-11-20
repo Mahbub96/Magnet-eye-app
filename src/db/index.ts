@@ -37,6 +37,13 @@ const MIGRATIONS: string[] = [
      key TEXT PRIMARY KEY NOT NULL,
      value TEXT NOT NULL
    );`,
+  // Phase 4: uploads. The server forgets a session after 30 min idle, so its id is only a
+  // cache; swipes go back to 'pending' whenever the server session is lost.
+  `ALTER TABLE scan ADD COLUMN server_session_id TEXT;
+   ALTER TABLE scan ADD COLUMN result_summary TEXT;   -- JSON: latest fit headline
+   ALTER TABLE swipe ADD COLUMN upload_state TEXT NOT NULL DEFAULT 'pending'; -- pending | uploaded | rejected
+   ALTER TABLE swipe ADD COLUMN upload_error TEXT;
+   ALTER TABLE swipe ADD COLUMN job_id TEXT;`,
 ];
 
 let db: SQLiteDatabase | null = null;

@@ -1,5 +1,7 @@
 import * as Application from 'expo-application';
 import { router } from 'expo-router';
+
+import { getServerUrl } from '../../api/server';
 import { useMemo } from 'react';
 
 import MagnetCapture, { type Capabilities, type SensorKey } from '../../../modules/magnet-capture/src';
@@ -61,6 +63,14 @@ export default function SettingsScreen() {
         </>
       )}
       <Section title="Setup" />
+      <Card>
+        <Row
+          title="Server"
+          sub={getServerUrl() ?? 'Not set: swipes wait on the phone'}
+          right="›"
+          onPress={() => router.push('/server')}
+        />
+      </Card>
       <Card>
         <Row
           title="Re-run phone check"

@@ -17,7 +17,10 @@ export type ScanRow = {
   range_ut: number | null;
   baseline_start_ut: string | null;
   baseline_end_ut: string | null;
+  server_session_id?: string | null;
+  result_summary?: string | null; // JSON ResultSummary (db/sync.ts)
   swipe_count?: number;
+  uploaded_count?: number;
 };
 
 export type SwipeRow = {
@@ -32,6 +35,8 @@ export type SwipeRow = {
   duration_s: number;
   saturated_samples: number;
   mean_speed_m_s: number | null;
+  upload_state?: 'pending' | 'uploaded' | 'rejected';
+  upload_error?: string | null;
 };
 
 export function newId(): string {
@@ -74,7 +79,9 @@ export function createScan(s: {
 
 export function listScans(): ScanRow[] {
   return getDb().getAllSync<ScanRow>(
-    `SELECT scan.*, (SELECT COUNT(*) FROM swipe WHERE swipe.scan_id = scan.id) AS swipe_count
+    `SELECT scan.*,
+       (SELECT COUNT(*) FROM swipe WHERE swipe.scan_id = scan.id) AS swipe_count,
+       (SELECT COUNT(*) FROM swipe WHERE swipe.scan_id = scan.id AND upload_state = 'uploaded') AS uploaded_count
      FROM scan ORDER BY created_at DESC`,
     [],
   );

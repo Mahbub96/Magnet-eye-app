@@ -6,6 +6,7 @@ import { Pressable, View } from 'react-native';
 import { canScan } from '../../modules/capture/deviceCheck';
 import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { BASELINE_MS, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
+import { useSync } from '../../sync/useSync';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
 import { NoMagnetometer } from '../../ui/NoMagnetometer';
 import { Toast } from '../../ui/patterns';
@@ -94,6 +95,30 @@ function useElapsed(running: boolean) {
   return running ? elapsed : 0;
 }
 
+/** Upload status; tap for the connection screen (Figma 12). */
+function SyncChip() {
+  const { status, pending } = useSync();
+  const [text, tone]: [string, 'good' | 'warn' | 'bad' | 'info'] =
+    status === 'syncing'
+      ? ['Uploading', 'info']
+      : status === 'offline'
+        ? [`Offline · ${pending} waiting`, 'warn']
+        : status === 'busy'
+          ? [`Server busy · ${pending} waiting`, 'warn']
+          : status === 'no_server'
+            ? ['No server', 'warn']
+            : status === 'blocked'
+              ? ['Server mismatch', 'bad']
+              : pending > 0
+                ? [`${pending} waiting`, 'warn']
+                : ['Server ✓', 'good'];
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={`Upload status: ${text}`} onPress={() => router.push('/connection')}>
+      <Chip text={text} tone={tone} />
+    </Pressable>
+  );
+}
+
 export default function ScanScreen() {
   const r = useRecorder();
   const [name, setName] = useState('');
@@ -142,6 +167,7 @@ export default function ScanScreen() {
         <Chip text="Tracking: ruler" tone="good" />
         <Chip text={`${(live?.rateHz ?? 0).toFixed(0)} Hz`} tone={(live?.rateHz ?? 0) > 50 ? 'good' : 'warn'} />
         <Chip text={`Tilt ${deg(tilt).toFixed(0)}°`} tone={notFlat ? 'warn' : 'good'} />
+        <SyncChip />
       </View>
 
       <Title
