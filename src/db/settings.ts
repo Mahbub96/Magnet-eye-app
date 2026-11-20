@@ -17,3 +17,4 @@ export function setSetting(key: string, value: string): void {
 export const ONBOARDED = 'onboarded';
 export const PROFILE = 'phone_profile'; // JSON PhoneProfile (modules/capture/profile.ts)
 export const CALIBRATION = 'calibration'; // JSON result of the Calibrate screen
+export const TRACKING_PREFERENCE = 'tracking_preference'; // 'auto' | 'arcore' | 'ruler'

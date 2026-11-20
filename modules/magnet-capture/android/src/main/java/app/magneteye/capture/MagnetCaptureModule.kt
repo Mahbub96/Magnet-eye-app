@@ -143,12 +143,20 @@ class MagnetCaptureModule : Module() {
   private fun checkArcoreAvailability(): String {
     val ctx = appContext.reactContext ?: return "unsupported"
     return try {
-      when (ArCoreApk.getInstance().checkAvailability(ctx)) {
+      val arCore = ArCoreApk.getInstance()
+      var availability = arCore.checkAvailability(ctx)
+      var attempts = 0
+      while (availability.isTransient && attempts < 10) {
+        Thread.sleep(50)
+        availability = arCore.checkAvailability(ctx)
+        attempts++
+      }
+      when (availability) {
         ArCoreApk.Availability.SUPPORTED_INSTALLED -> "ready"
         ArCoreApk.Availability.SUPPORTED_NOT_INSTALLED,
         ArCoreApk.Availability.SUPPORTED_APK_TOO_OLD -> "needs_install"
         ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE -> "unsupported"
-        else -> "unknown"
+        else -> if (availability.isSupported) "needs_install" else "unsupported"
       }
     } catch (e: Exception) {
       "unsupported"

@@ -1,11 +1,13 @@
 import * as Application from 'expo-application';
 import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Linking } from 'react-native';
 
 import { getServerUrl } from '../../api/server';
 import { activeProfile, resetProfiles } from '../../db/profiles';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert } from 'react-native';
-
+import { getSetting, setSetting, TRACKING_PREFERENCE } from '../../db/settings';
+import { requestCameraPermission } from '../../modules/capture/permissions';
+import { useRecorder } from '../../store/recorder';
 import MagnetCapture, { type Capabilities, type SensorKey } from '../../../modules/magnet-capture/src';
 import { FORMAT_VERSION } from '../../modules/capture/swipeFormat';
 import { Banner, Card, Row, Screen, Section, Title } from '../../ui/components';
@@ -21,8 +23,15 @@ const LABELS: Record<SensorKey, [string, string]> = {
 };
 
 export default function SettingsScreen() {
+  const r = useRecorder();
   const [profile, setProfile] = useState(activeProfile);
-  useFocusEffect(useCallback(() => setProfile(activeProfile()), []));
+  const [trackingPref, setTrackingPref] = useState(() => getSetting(TRACKING_PREFERENCE) ?? 'auto');
+  useFocusEffect(
+    useCallback(() => {
+      setProfile(activeProfile());
+      setTrackingPref(getSetting(TRACKING_PREFERENCE) ?? 'auto');
+    }, [])
+  );
   const caps = useMemo<Capabilities | Error>(() => {
     try {
       return MagnetCapture.getCapabilities();
@@ -120,8 +129,90 @@ export default function SettingsScreen() {
         />
       </Card>
       <Card>
-        <Row title="Tracking mode" sub="Ruler. Camera tracking (ARCore) arrives in a later version." right="Ruler" tone="info" />
+        <Row
+          title="Tracking mode"
+          sub={
+            trackingPref === 'auto'
+              ? `Auto: using ${r.trackingMode === 'arcore' ? 'ARCore (3D Freeform)' : 'Ruler on Paper'}`
+              : trackingPref === 'arcore'
+              ? 'Forced: ARCore 3D Freeform (Camera)'
+              : 'Forced: Ruler on Paper'
+          }
+          right={trackingPref === 'auto' ? 'Auto ›' : trackingPref === 'arcore' ? 'ARCore ›' : 'Ruler ›'}
+          tone={r.trackingMode === 'arcore' ? 'good' : 'info'}
+          onPress={() => {
+            const arStatus = caps instanceof Error ? 'unknown' : caps.arcoreStatus;
+            const arText =
+              arStatus === 'ready'
+                ? 'Ready'
+                : arStatus === 'needs_install'
+                ? 'Needs Google Play Services for AR'
+                : 'Device hardware unsupported';
+
+            Alert.alert(
+              'Select Tracking Mode',
+              `Phone ARCore status: ${arText}`,
+              [
+                {
+                  text: 'Auto (Recommended)',
+                  onPress: () => {
+                    setSetting(TRACKING_PREFERENCE, 'auto');
+                    setTrackingPref('auto');
+                    const target = arStatus === 'ready' ? 'arcore' : 'ruler';
+                    r.setTrackingMode(target);
+                  },
+                },
+                {
+                  text: 'ARCore 3D Freeform',
+                  onPress: async () => {
+                    if (arStatus === 'needs_install') {
+                      Alert.alert(
+                        'Install Google Play Services for AR',
+                        'ARCore needs to be installed or updated from Google Play Store.',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Open Play Store', onPress: () => Linking.openURL('market://details?id=com.google.ar.core') },
+                        ],
+                      );
+                      return;
+                    }
+                    if (arStatus === 'unsupported') {
+                      Alert.alert('Unsupported', 'This phone hardware does not support ARCore camera tracking.');
+                      return;
+                    }
+                    const ok = await requestCameraPermission();
+                    if (ok) {
+                      setSetting(TRACKING_PREFERENCE, 'arcore');
+                      setTrackingPref('arcore');
+                      r.setTrackingMode('arcore');
+                    }
+                  },
+                },
+                {
+                  text: 'Ruler on Paper',
+                  onPress: () => {
+                    setSetting(TRACKING_PREFERENCE, 'ruler');
+                    setTrackingPref('ruler');
+                    r.setTrackingMode('ruler');
+                  },
+                },
+                { text: 'Cancel', style: 'cancel' },
+              ],
+            );
+          }}
+        />
       </Card>
+      {!(caps instanceof Error) && caps.arcoreStatus === 'needs_install' ? (
+        <Card>
+          <Row
+            title="Install ARCore"
+            sub="Install Google Play Services for AR to unlock freeform 3D camera tracking"
+            right="Install ›"
+            tone="warn"
+            onPress={() => Linking.openURL('market://details?id=com.google.ar.core')}
+          />
+        </Card>
+      ) : null}
 
       <Section title="About" />
       <Card>

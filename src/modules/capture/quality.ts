@@ -29,9 +29,9 @@ export function maxTiltRad(qs: Quat[]): number {
   return m;
 }
 
-/** Why a baseline cannot be used, or null if it can. */
-export function baselineProblem(b: { tiltRad: number; fieldWorld: Vec3 }): string | null {
-  if (b.tiltRad > FLAT_MAX_RAD)
+/** Why a baseline cannot be used, or null if it can. In ARCore mode, tilt is free and not restricted to flat. */
+export function baselineProblem(b: { tiltRad: number; fieldWorld: Vec3 }, isArcore = false): string | null {
+  if (!isArcore && b.tiltRad > FLAT_MAX_RAD)
     return `Lay the phone flat (it is tilted ${deg(b.tiltRad).toFixed(0)}°) and try again.`;
   const f = Math.hypot(...b.fieldWorld);
   if (f > BACKGROUND_MAX_UT)
@@ -48,13 +48,14 @@ export function baselineProblem(b: { tiltRad: number; fieldWorld: Vec3 }): strin
   return null;
 }
 
-/** Problems with a recorded ruler swipe that make its positions untrustworthy. */
+/** Problems with a recorded swipe. In ARCore mode, 3D tilt is expected and permitted. */
 export function swipeProblems(s: {
   maxTiltRad: number;
   motionFound: boolean;
   /** Mean speed along the line (cm/s) and this phone's good range, when known. */
   speedCmS?: number;
   speedRange?: [number, number];
+  isArcore?: boolean;
 }): string[] {
   const p: string[] = [];
   // Ruler mode assumes a steady slide from start to end mark: a slide far outside the range
@@ -66,7 +67,7 @@ export function swipeProblems(s: {
     else if (s.speedCmS > hi * 1.5)
       p.push(`Slide too fast (${s.speedCmS.toFixed(1)} cm/s): aim for ${lo}–${hi} cm/s.`);
   }
-  if (s.maxTiltRad > FLAT_MAX_RAD)
+  if (!s.isArcore && s.maxTiltRad > FLAT_MAX_RAD)
     p.push(`Phone tilted ${deg(s.maxTiltRad).toFixed(0)}° during the swipe: keep it flat on the paper.`);
   if (!s.motionFound) p.push('No slide detected: slide the phone along the ruler between record and stop.');
   return p;

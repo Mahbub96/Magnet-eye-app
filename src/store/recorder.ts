@@ -17,7 +17,7 @@ import {
 } from '../db/scans';
 import { activeProfile, type CalibrationProfile } from '../db/profiles';
 import { sqliteRepo, swipeWasUploaded } from '../db/sync';
-import { getSetting, PROFILE } from '../db/settings';
+import { getSetting, setSetting, PROFILE, TRACKING_PREFERENCE } from '../db/settings';
 import { measureBaseline } from '../modules/capture/baseline';
 import type { PhoneProfile } from '../modules/capture/profile';
 import { apply, type Mat3 } from '../modules/capture/ironFit';
@@ -124,13 +124,24 @@ export const useRecorder = create<State>((set, get) => ({
   last: null,
   message: null,
   trackingMode: 'ruler',
-  setTrackingMode: (trackingMode) => set({ trackingMode }),
+  setTrackingMode: (trackingMode) => {
+    setSetting(TRACKING_PREFERENCE, trackingMode);
+    set({ trackingMode });
+  },
 
   init: () => {
     try {
       const caps = MagnetCapture.getCapabilities();
-      // Hybrid auto-detection: Default to ARCore if supported and ready, otherwise Ruler mode
-      const defaultMode: TrackingMode = caps?.arcoreStatus === 'ready' ? 'arcore' : 'ruler';
+      const pref = getSetting(TRACKING_PREFERENCE) ?? 'auto';
+      let defaultMode: TrackingMode = 'ruler';
+      if (pref === 'ruler') {
+        defaultMode = 'ruler';
+      } else if (pref === 'arcore') {
+        defaultMode = caps?.arcoreStatus === 'ready' ? 'arcore' : 'ruler';
+      } else {
+        // 'auto'
+        defaultMode = caps?.arcoreStatus === 'ready' ? 'arcore' : 'ruler';
+      }
       set({
         caps,
         capsError: null,
@@ -164,7 +175,13 @@ export const useRecorder = create<State>((set, get) => ({
     // One baseline at a time: a second tap must not start another recording, which would
     // steal the first one's readings and reset an already started scan.
     if (get().phase !== 'idle' || get().scan) return;
-    set({ phase: 'baseline', message: 'Hold still: phone flat, top along the paper +y, magnet away' });
+    const isArcore = get().trackingMode === 'arcore';
+    set({
+      phase: 'baseline',
+      message: isArcore
+        ? 'Hold still in the air: 50 cm away from magnet to zero Earth field'
+        : 'Hold still: phone flat, top along the paper +y, magnet away',
+    });
     MagnetCapture.startRecording();
     await sleep(BASELINE_MS);
     const raw = MagnetCapture.stopRecording();
@@ -172,7 +189,7 @@ export const useRecorder = create<State>((set, get) => ({
       const p = get().profile;
       const b = measureBaseline(raw, undefined, p ? { hardIron: p.hard_iron_ut, softIron: p.soft_iron } : undefined);
       if (b.maxTiltChangeRad > 0.05) throw new Error('The phone moved. Keep it still and try again.');
-      const why = baselineProblem(b);
+      const why = baselineProblem(b, isArcore);
       if (why) throw new Error(why);
       const scan: ActiveScan = {
         id: newId(),
@@ -267,6 +284,7 @@ export const useRecorder = create<State>((set, get) => ({
         motionFound: swipe.stats.motion_detected,
         speedCmS: swipe.stats.mean_speed_m_s === null ? undefined : swipe.stats.mean_speed_m_s * 100,
         speedRange: speedRange(),
+        isArcore: mode === 'arcore',
       });
       const row = await saveSwipe(swipe);
       useSync.getState().kick(); // upload now if the server is reachable; queued otherwise

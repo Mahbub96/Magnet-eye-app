@@ -95,22 +95,28 @@ function LiveField({ range, limit }: { range: number; limit: number }) {
 function LiveChips() {
   const hz = useLive((s) => Math.round(s.live?.rateHz ?? 0));
   const tilt = useLive((s) => (s.live ? Math.round(deg(tiltRad(s.live.quat))) : 0));
+  const isArcore = useRecorder((s) => s.trackingMode === 'arcore');
   return (
     <>
       <Chip text={`${hz} Hz`} tone={hz > 50 ? 'good' : 'warn'} />
-      <Chip text={`Tilt ${tilt}°`} tone={tilt > deg(FLAT_MAX_RAD) ? 'warn' : 'good'} />
+      {isArcore ? (
+        <Chip text="6-DoF 3D" tone="good" />
+      ) : (
+        <Chip text={`Tilt ${tilt}°`} tone={tilt > deg(FLAT_MAX_RAD) ? 'warn' : 'good'} />
+      )}
     </>
   );
 }
 
-/** Warning strips for the sensor limit and a tilted phone. */
+/** Warning strips for the sensor limit and a tilted phone (ruler mode only). */
 function LiveToasts({ limit }: { limit: number }) {
   const nearLimit = useLive((s) => !!s.live && limit > 0 && Math.max(...s.live.mag.map(Math.abs)) > limit);
   const tilt = useLive((s) => (s.live ? Math.round(deg(tiltRad(s.live.quat))) : 0));
+  const isArcore = useRecorder((s) => s.trackingMode === 'arcore');
   return (
     <>
       {nearLimit ? <Toast text="Near the sensor limit — lift the phone or move away from the magnet" /> : null}
-      {tilt > deg(FLAT_MAX_RAD) ? <Toast text={`Phone tilted ${tilt}° — lay it flat, screen up`} /> : null}
+      {!isArcore && tilt > deg(FLAT_MAX_RAD) ? <Toast text={`Phone tilted ${tilt}° — lay it flat, screen up`} /> : null}
     </>
   );
 }
