@@ -56,6 +56,8 @@ type State = {
   scan: ActiveScan | null;
   swipeCount: number;
   line: Line;
+  /** Lines recorded in this scan, in order (mm on the paper), for the map and coverage. */
+  done: Line[];
   last: LastSwipe | null;
   message: string | null;
   init: () => () => void;
@@ -84,6 +86,7 @@ export const useRecorder = create<State>((set, get) => ({
   scan: null,
   swipeCount: 0,
   line: { x0: -100, y0: 0, x1: 100, y1: 0, z: 0, step: 20 },
+  done: [],
   last: null,
   message: null,
 
@@ -147,7 +150,7 @@ export const useRecorder = create<State>((set, get) => ({
         rangeUt: scan.rangeUt,
         baselineStart: scan.baselineStart,
       });
-      set({ scan, phase: 'ready', swipeCount: 0, last: null, message: null });
+      set({ scan, phase: 'ready', swipeCount: 0, done: [], last: null, message: null });
     } catch (e) {
       set({ phase: get().scan ? 'ready' : 'idle', message: (e as Error).message });
     }
@@ -207,6 +210,7 @@ export const useRecorder = create<State>((set, get) => ({
       set({
         phase: 'ready',
         swipeCount: swipeCount + 1,
+        done: [...get().done, line],
         last: { ...row, problems, warnings },
         // Next parallel line, one step over.
         line: along
@@ -233,6 +237,7 @@ export const useRecorder = create<State>((set, get) => ({
     const along = Math.abs(line.x1 - line.x0) >= Math.abs(line.y1 - line.y0);
     set({
       swipeCount: swipeCount - 1,
+      done: get().done.slice(0, -1),
       last: null,
       line: along
         ? { ...line, y0: line.y0 - line.step, y1: line.y1 - line.step }

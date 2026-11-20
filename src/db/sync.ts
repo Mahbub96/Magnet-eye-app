@@ -13,6 +13,7 @@ export type ResultSummary = {
   finest_detail_m: number;
   warnings: string[];
   moment_am2: number[];
+  next_swipe: FitResult['next_swipe'];
   fitted_at: string;
 };
 
@@ -72,6 +73,7 @@ export const sqliteRepo: SyncRepo = {
       finest_detail_m: r.finest_detail_m,
       warnings: r.warnings,
       moment_am2: r.magnet.moment_am2,
+      next_swipe: r.next_swipe,
       fitted_at: new Date().toISOString(),
     };
     getDb().runSync('UPDATE scan SET result_summary = ? WHERE id = ?', [JSON.stringify(summary), scanId]);

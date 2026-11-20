@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import MagnetCapture, { type Capabilities } from '../../modules/magnet-capture/src';
-import { setSetting } from '../db/settings';
+import { PROFILE, setSetting } from '../db/settings';
 import { gradeNoise, gradeRange, gradeRate, measureProfile, type PhoneProfile } from '../modules/capture/profile';
 import { useSensorStream } from '../modules/capture/useStream';
 import { Banner, Button } from '../ui/components';
@@ -12,7 +12,6 @@ import { MetricCard, StepHeader } from '../ui/patterns';
 import { Text } from '../ui/Text';
 import { color, space, type } from '../ui/theme';
 
-export const PROFILE = 'phone_profile';
 const MEASURE_MS = 2000;
 
 /** Figma "03 Capability report": measured just now, with guidance derived from it. */

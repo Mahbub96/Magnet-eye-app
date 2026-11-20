@@ -5,6 +5,8 @@ import { canScan, deviceChecks } from '../modules/capture/deviceCheck';
 
 import { gradeNoise, gradeRate, measureProfile, nearestBin, SPHERE_BINS } from '../modules/capture/profile';
 
+import { coverageGrid, extentMm } from '../modules/capture/coverage';
+
 const sensor = (over: Partial<SensorInfo> = {}): SensorInfo => ({
   name: 's',
   vendor: 'v',
@@ -81,4 +83,13 @@ test('profile from a still recording: rate, noise and the swipe speed range', ()
 test('coverage bins: 26 directions, each its own nearest', () => {
   expect(SPHERE_BINS).toHaveLength(26);
   SPHERE_BINS.forEach((b, i) => expect(nearestBin([b[0] * 50, b[1] * 50, b[2] * 50])).toBe(i));
+});
+
+test('coverage: a line through a row of cell centres covers that row only', () => {
+  const y = 140 - 2.5 * (280 / 6); // centre of row 2
+  const segs = [{ x0: -100, y0: y, x1: 100, y1: y }];
+  expect(extentMm(segs)).toBe(140);
+  const g = coverageGrid(segs, 140, 6);
+  // the end cells' centres are 16.7 mm past the ends, within half a cell (23.3 mm)
+  expect(g.map((r) => r.filter(Boolean).length)).toEqual([0, 0, 6, 0, 0, 0]);
 });

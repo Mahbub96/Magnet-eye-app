@@ -4,7 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import MagnetCapture from '../../modules/magnet-capture/src';
-import { ONBOARDED, setSetting } from '../db/settings';
+import { CALIBRATION, ONBOARDED, setSetting } from '../db/settings';
 import { nearestBin, SPHERE_BINS } from '../modules/capture/profile';
 import { rows, stdVec } from '../modules/capture/stats';
 import { useSensorStream } from '../modules/capture/useStream';
@@ -14,7 +14,6 @@ import { ProgressRing, StepHeader, Stepper } from '../ui/patterns';
 import { Text } from '../ui/Text';
 import { color, space, type } from '../ui/theme';
 
-export const CALIBRATION = 'calibration';
 const STEPS = ['Away from metal', 'Figure eight', 'Baseline', 'Noise test'];
 const COVERED_ENOUGH = 0.85; // share of the 26 directions
 const STILL_MS = 2000;
