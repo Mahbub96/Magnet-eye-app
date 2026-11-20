@@ -13,6 +13,38 @@ npx expo-doctor             # diagnose dependency and config issues
 
 Run lint, typecheck and tests before opening a pull request.
 
+## Live reload while working on the UI
+
+The app has its own native module, so Expo Go cannot run it. Use the development build
+instead (the app plus `expo-dev-client`):
+
+1. Build and install it once, and again only after a native change (a new native package,
+   the Kotlin module, fonts or `app.json` plugins):
+   `npx expo prebuild --platform android`, then in `android/`
+   `./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a`, and install
+   `android/app/build/outputs/apk/debug/app-debug.apk` (or `npx expo run:android` with the
+   phone on USB).
+2. Start the bundler on the local network: `npx expo start --dev-client --lan`.
+3. On the phone (same Wi-Fi), open Magnet Eye and pick the server it lists, or enter
+   `http://<computer's IP>:8081`. Every saved change reloads on the phone; shake the phone
+   for the developer menu.
+
+Every native library the planned screens need is installed now, so this one build serves
+until Phase 6 (when the Kotlin module gains ARCore):
+
+| Library | For |
+| --- | --- |
+| `react-native-svg` | eye mark, icons, charts and the coverage grid |
+| `expo-font` (Inter) | the design's font |
+| `react-native-reanimated`, `react-native-worklets`, `react-native-gesture-handler` | sheets, the speed meter, guide animations, touch rotate and zoom |
+| `expo-gl`, `three`, `@react-three/fiber` | the 3D results viewer (Phase 8) |
+| `@react-native-community/netinfo` | Needs a connection and upload retry (Phase 4) |
+| `expo-haptics` | feedback on record, stop and warnings |
+| `expo-keep-awake` | keeps the screen on while scanning |
+
+The development build and the release build share the package name, so installing one
+replaces the other; saved scans are kept.
+
 ## Expo
 
 - Expo changes its APIs between SDK releases. Check the `expo` version in `package.json` and use
