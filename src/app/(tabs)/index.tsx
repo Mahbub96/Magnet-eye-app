@@ -1,13 +1,16 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 
+import { getScan } from '../../db/scans';
+import type { ResultSummary } from '../../db/sync';
 import { canScan } from '../../modules/capture/deviceCheck';
 import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { BASELINE_MS, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
 import { useSync } from '../../sync/useSync';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
+import { MagnetMoved } from '../../ui/MagnetMoved';
 import { NoMagnetometer } from '../../ui/NoMagnetometer';
 import { Toast } from '../../ui/patterns';
 import {
@@ -123,6 +126,15 @@ export default function ScanScreen() {
   const r = useRecorder();
   const [name, setName] = useState('');
   const [sheet, setSheet] = useState(false);
+  const [movedAt, setMovedAt] = useState<number | null>(null); // fit size the dialog was answered for
+  const syncStatus = useSync((st) => st.status);
+  // After each upload round, look at the open scan's latest fit for a moved magnet (PR-19).
+  const fit = useMemo(() => {
+    if (!r.scan || syncStatus === 'syncing') return null;
+    const row = getScan(r.scan.id);
+    return row?.result_summary ? (JSON.parse(row.result_summary) as ResultSummary) : null;
+  }, [r.scan, syncStatus]);
+  const moved = !!fit && fit.warnings.includes('magnet_may_have_moved') && movedAt !== fit.swipes;
   const init = useRecorder((s) => s.init);
   useFocusEffect(useCallback(() => init(), [init]));
 
@@ -290,6 +302,14 @@ export default function ScanScreen() {
             </>
           ) : null}
 
+          <MagnetMoved
+            visible={moved}
+            onKeepGoing={() => setMovedAt(fit?.swipes ?? null)}
+            onRestart={() => {
+              setMovedAt(fit?.swipes ?? null);
+              r.cancelScan(); // the swipes so far stay in Saved as an unfinished scan
+            }}
+          />
           <Button title="Cancel scan" kind="danger" disabled={busy || r.phase === 'recording'} onPress={r.cancelScan} style={{ marginTop: space.md }} />
         </>
       )}
