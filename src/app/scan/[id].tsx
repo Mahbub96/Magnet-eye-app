@@ -5,9 +5,10 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
 
 
-import { deleteScan, exportScan, getScan, listSwipes } from '../../db/scans';
+import { deleteScan, getScan, listSwipes } from '../../db/scans';
 import type { ResultSummary } from '../../db/sync';
 import { Banner, Button, Row, Screen, Section, Stat, Title } from '../../ui/components';
+import { ExportSheet } from '../../ui/ExportSheet';
 import { color, space, type } from '../../ui/theme';
 import { Text } from '../../ui/Text';
 
@@ -30,7 +31,7 @@ export default function ScanDetail() {
   const scan = useMemo(() => getScan(id), [id]);
   const swipes = useMemo(() => listSwipes(id), [id]);
   const summary = scan?.result_summary ? (JSON.parse(scan.result_summary) as ResultSummary) : null;
-  const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   if (!scan) {
     return (
@@ -95,24 +96,21 @@ export default function ScanDetail() {
         />
       ))}
 
-      <Button
-        title="Export full scan (JSON)"
-        busy={busy}
-        disabled={swipes.length === 0}
-        style={{ marginTop: space.md }}
-        onPress={async () => {
-          setBusy(true);
-          try {
-            const f = await exportScan(id);
-            await share(f.uri, scan.name);
-          } finally {
-            setBusy(false);
-          }
-        }}
+      {summary ? (
+        <Button
+          title="View result"
+          style={{ marginTop: space.md }}
+          onPress={() => router.push({ pathname: '/results/[id]', params: { id } })}
+        />
+      ) : null}
+      <Button title="Export…" kind="secondary" disabled={swipes.length === 0} onPress={() => setExporting(true)} />
+      <ExportSheet
+        visible={exporting}
+        onClose={() => setExporting(false)}
+        scanId={id}
+        name={scan.name}
+        hasResult={!!summary}
       />
-      <Text style={[type.small, { textAlign: 'center' }]}>
-        Opens the Android share sheet. Nothing is sent to the Magnet Eye server.
-      </Text>
       <Button
         title="Delete scan"
         kind="danger"
