@@ -32,7 +32,7 @@ export function maxTiltRad(qs: Quat[]): number {
 /** Why a baseline cannot be used, or null if it can. */
 export function baselineProblem(b: { tiltRad: number; fieldWorld: Vec3 }): string | null {
   if (b.tiltRad > FLAT_MAX_RAD)
-    return `Lay the phone flat on the paper (it is tilted ${deg(b.tiltRad).toFixed(0)}°) and try again.`;
+    return `Lay the phone flat (it is tilted ${deg(b.tiltRad).toFixed(0)}°) and try again.`;
   const f = Math.hypot(...b.fieldWorld);
   if (f > BACKGROUND_MAX_UT)
     return (

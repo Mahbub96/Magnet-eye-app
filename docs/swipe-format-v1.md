@@ -64,6 +64,9 @@ backend's noise model and per-swipe correlated offsets (PR-23).
 ## planned_line
 
 Ruler and grid modes: the line the user was asked to follow, `start_m` and `end_m` (world).
+Their `z` is the height of the surface the phone slides on above the table (`table_z_m` = 0,
+where the magnet sits). The phone slides on a raised flat surface over the magnet, so every
+reading is taken above it; the solver assumes that.
 
 ## Streams
 

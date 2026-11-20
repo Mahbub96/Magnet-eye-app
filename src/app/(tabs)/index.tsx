@@ -149,8 +149,8 @@ export default function ScanScreen() {
         title={inScan ? r.scan!.name : 'Record swipes'}
         sub={
           inScan
-            ? 'Put the centre of the phone’s top edge on the start mark, press record, slide steadily along the ruler to the end mark, then stop.'
-            : 'Tape a sheet of paper to the table and draw x and y axes. The paper is the table plane (z = 0).'
+            ? 'Put the centre of the phone’s top edge on the start mark, press record, slide steadily along the ruler to the end mark, then stop. Lines may pass right over the magnet.'
+            : 'Tape the magnet to the table (z = 0) and cover it with a box 3–5 cm tall. Tape paper on the box top and draw x and y axes, origin above the magnet.'
         }
       />
 
@@ -169,7 +169,7 @@ export default function ScanScreen() {
       </Card>
 
       {nearLimit ? <Toast text="Near the sensor limit — lift the phone or move away from the magnet" /> : null}
-      {notFlat ? <Toast text={`Phone tilted ${deg(tilt).toFixed(0)}° — lay it flat on the paper, screen up`} /> : null}
+      {notFlat ? <Toast text={`Phone tilted ${deg(tilt).toFixed(0)}° — lay it flat, screen up`} /> : null}
       {!inScan && live && field > BACKGROUND_MAX_UT ? (
         <Banner
           tone="warn"
@@ -213,10 +213,13 @@ export default function ScanScreen() {
             <NumberField label="End y" value={r.line.y1} onChange={(v) => r.setLine({ y1: v })} />
           </View>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
-            <NumberField label="Height above paper" value={r.line.z} onChange={(v) => r.setLine({ z: v })} />
+            <NumberField label="Box height (mm)" value={r.line.z} onChange={(v) => r.setLine({ z: v })} />
             <NumberField label="Next line step" value={r.line.step} onChange={(v) => r.setLine({ step: v })} />
           </View>
 
+          {r.line.z <= 0 ? (
+            <Banner tone="warn" text="Enter the box height: how far the paper on the box top is above the table, in mm." />
+          ) : null}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: space.sm }}>
             <Button title="Redo last" kind="secondary" disabled={busy || r.phase === 'recording' || r.swipeCount === 0} onPress={r.redoLast} />
             <View style={{ alignItems: 'center', gap: space.xs }}>

@@ -66,7 +66,7 @@ export function BeforeYouScan({
 
         <View style={{ gap: space.sm, padding: 14, borderRadius: 14, backgroundColor: color.surface2 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 13, fontWeight: '500', color: color.text }}>Lay the phone flat on the paper</Text>
+            <Text style={{ fontSize: 13, fontWeight: '500', color: color.text }}>Lay the phone flat on the box top</Text>
             <Text style={[type.small, { fontSize: 13 }]}>{(baselineMs / 1000).toFixed(0)} s</Text>
           </View>
           <View style={{ height: 4, borderRadius: 2, backgroundColor: color.bg, overflow: 'hidden' }}>
@@ -82,7 +82,7 @@ export function BeforeYouScan({
           <Text style={[type.small, { fontSize: 11, color: color.textFaint }]}>
             {measuring
               ? 'Hold still · measuring the background field at this spot'
-              : 'Top along +y, magnet at least 50 cm away. This measures the background field.'}
+              : 'Top along +y, magnet at least 50 cm away for now. This measures the background field.'}
           </Text>
         </View>
 

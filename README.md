@@ -45,14 +45,22 @@ npm test
 
 ## Recording a swipe (ruler mode)
 
-1. Tape a sheet of paper to a wooden or plastic table, away from steel and laptops. Draw x and y axes.
-2. With the magnet at least 50 cm away, lay the phone flat with its top edge pointing along +y,
-   press **Start a scan**, read the checklist, then **Start scanning**. Keep it still for 2 seconds;
-   the baseline is refused if the phone is tilted or the magnet is too close.
-3. Put the magnet at the origin. Enter the swipe line in millimetres, place the centre of the
-   phone's top edge on the start mark, press record, slide steadily along the ruler to the end
-   mark, press stop.
-4. The next parallel line is filled in for you. **Finish** measures the end baseline.
+The solver needs readings taken above the magnet, so the phone slides on a raised flat surface
+over it, never on the table beside it.
+
+1. Tape the magnet to a wooden or plastic table (z = 0), away from steel and laptops. Cover it
+   with a box or board on non-metal spacers whose flat top is 3–5 cm above the table. Tape paper
+   on the top and draw x and y axes with the origin right above the magnet.
+2. Move the magnet at least 50 cm away, lay the phone flat on the box top with its top edge
+   pointing along +y, press **Start a scan**, read the checklist, then **Start scanning**. Keep it
+   still for 2 seconds; the baseline is refused if the phone is tilted or the field is too high.
+   Then put the magnet back under the box at the origin.
+3. Enter the swipe line in millimetres and the **box height** (top surface above the table).
+   Place the centre of the phone's top edge on the start mark, press record, slide steadily
+   along the ruler to the end mark, press stop. Lines may pass right over the magnet; if the
+   near-limit warning appears, use a taller box.
+4. The next parallel line is filled in for you. Move the magnet away, then **Finish** measures
+   the end baseline.
 5. Saved → open the scan → share a swipe or the full scan as JSON.
 
 ## Layout
