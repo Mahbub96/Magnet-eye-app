@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, G, Line as SvgLine, Path, Polygon, Rect } from 'react-native-svg';
 
@@ -9,7 +9,7 @@ import { color, type } from './theme';
 /** Top-down map of the paper in ruler mode (stands in for the Figma "06 Scan" camera view
  * until camera tracking, Phase 6): the magnet at the origin, recorded lines, the line to do
  * now, and the server's suggested next line. Units: mm on the paper, +y up the map. */
-export function PaperMap({ done, current, suggested, height = 230 }: {
+function PaperMapImpl({ done, current, suggested, height = 230 }: {
   done: Seg[];
   current: Seg | null;
   suggested: Seg | null;
@@ -71,7 +71,7 @@ export function PaperMap({ done, current, suggested, height = 230 }: {
 }
 
 /** Figma coverage grid: which parts of the paper the recorded lines have passed over. */
-export function CoverageGrid({ done, size = 66 }: { done: Seg[]; size?: number }) {
+function CoverageGridImpl({ done, size = 66 }: { done: Seg[]; size?: number }) {
   const n = 6;
   const g = coverageGrid(done, extentMm(done), n);
   const cell = (size - (n - 1) * 2) / n;
@@ -86,7 +86,7 @@ export function CoverageGrid({ done, size = 66 }: { done: Seg[]; size?: number }
 }
 
 /** Figma speed meter: this phone's good range shaded, the last swipe's speed marked (cm/s). */
-export function SpeedMeter({ speed, min, max }: { speed: number | null; min: number; max: number }) {
+function SpeedMeterImpl({ speed, min, max }: { speed: number | null; min: number; max: number }) {
   const top = max * 1.5;
   const [w, setW] = useState(0);
   const at = (v: number) => (Math.max(0, Math.min(top, v)) / top) * w;
@@ -114,3 +114,8 @@ export function SpeedMeter({ speed, min, max }: { speed: number | null; min: num
     </View>
   );
 }
+
+// Redraw only when their own inputs change, not on every live sensor update.
+export const PaperMap = memo(PaperMapImpl);
+export const CoverageGrid = memo(CoverageGridImpl);
+export const SpeedMeter = memo(SpeedMeterImpl);

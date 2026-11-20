@@ -58,13 +58,16 @@ export type ActiveScan = {
  * in a way that makes its positions untrustworthy (phone tilted, no slide found): redo it. */
 export type LastSwipe = SwipeRow & { problems: string[]; warnings: string[] };
 
+/** Live readings (~15 per second) live in their own small store, so only the few parts of a
+ * screen that show them redraw on each sample, not the whole screen. */
+type Live = { live: LiveSample | null; field: number; history: number[] };
+export const useLive = create<Live>(() => ({ live: null, field: 0, history: [] }));
+
 type State = {
   caps: Capabilities | null;
   capsError: string | null;
   /** Active calibration profile, when this phone has the raw sensor it applies to. */
   profile: CalibrationProfile | null;
-  live: LiveSample | null;
-  history: number[];
   phase: Phase;
   scan: ActiveScan | null;
   swipeCount: number;
@@ -100,8 +103,6 @@ export const useRecorder = create<State>((set, get) => ({
   caps: null,
   capsError: null,
   profile: null,
-  live: null,
-  history: [],
   phase: 'idle',
   scan: null,
   swipeCount: 0,
@@ -120,8 +121,8 @@ export const useRecorder = create<State>((set, get) => ({
     }
     const sub = MagnetCapture.addListener('onSample', (s) => {
       const b = liveField(s, get().profile);
-      const h = get().history;
-      set({ live: s, history: h.length >= HISTORY ? [...h.slice(1), b] : [...h, b] });
+      const h = useLive.getState().history;
+      useLive.setState({ live: s, field: b, history: h.length >= HISTORY ? [...h.slice(1), b] : [...h, b] });
     });
     try {
       MagnetCapture.startStreaming();

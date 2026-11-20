@@ -1,8 +1,8 @@
 import * as Application from 'expo-application';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
-
+import Svg, { Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { getScan } from '../../db/scans';
 import { getSetting, PROFILE } from '../../db/settings';
@@ -11,7 +11,7 @@ import { canScan } from '../../modules/capture/deviceCheck';
 import type { PhoneProfile } from '../../modules/capture/profile';
 import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { recalibrationReason } from '../../modules/capture/recalibrate';
-import { BASELINE_MS, liveField, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
+import { BASELINE_MS, rangeOf, SAFE_FRACTION, useLive, useRecorder } from '../../store/recorder';
 import { useSync } from '../../sync/useSync';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
 import { MagnetMoved } from '../../ui/MagnetMoved';
@@ -33,25 +33,98 @@ import {
 import { color, space, type } from '../../ui/theme';
 import { Text } from '../../ui/Text';
 
-function Sparkline({ values, limit }: { values: number[]; limit: number }) {
-  // Scale to what is on screen (at least 100 µT), so the Earth's field alone is visible and
-  // the magnet's rise stands out; bars above the safe limit turn amber.
+/** Last few seconds of field strength: one SVG drawing (two paths) instead of 90 views. Scaled
+ * to what is on screen (at least 100 µT), so the Earth's field alone is visible and the magnet's
+ * rise stands out; bars above the safe limit turn amber. */
+const Sparkline = memo(function Sparkline({ values, limit }: { values: number[]; limit: number }) {
+  const [w, setW] = useState(0);
+  const H = 44;
+  const n = 90;
   const max = Math.max(100, 1.2 * Math.max(0, ...values));
+  let ok = '';
+  let over = '';
+  if (w > 0) {
+    const step = w / n;
+    const bw = Math.max(1, step - 1);
+    const x0 = w - values.length * step;
+    values.forEach((v, i) => {
+      const h = Math.max(2, (v / max) * H);
+      const d = `M${(x0 + i * step).toFixed(1)} ${H}v${(-h).toFixed(1)}h${bw.toFixed(1)}v${h.toFixed(1)}z`;
+      if (v > limit) over += d;
+      else ok += d;
+    });
+  }
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 44, gap: 1 }}>
-      {values.map((v, i) => (
-        <View
-          key={i}
-          style={{
-            flex: 1,
-            height: Math.max(2, (v / max) * 44),
-            borderRadius: 1,
-            backgroundColor: v > limit ? color.warn : color.accent,
-            opacity: 0.35 + (0.65 * i) / Math.max(values.length, 1),
-          }}
-        />
-      ))}
+    <View style={{ height: H }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      {w > 0 ? (
+        <Svg width={w} height={H}>
+          <Defs>
+            <LinearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor={color.accent} stopOpacity={0.35} />
+              <Stop offset="1" stopColor={color.accent} stopOpacity={1} />
+            </LinearGradient>
+          </Defs>
+          <Path d={ok} fill="url(#fade)" />
+          <Path d={over} fill={color.warn} />
+        </Svg>
+      ) : null}
     </View>
+  );
+});
+
+/** "Field now" with its sparkline. The only part of the screen that redraws on every sample. */
+function LiveField({ range, limit }: { range: number; limit: number }) {
+  const field = useLive((s) => s.field);
+  const history = useLive((s) => s.history);
+  return (
+    <View style={{ flex: 1, gap: 4 }}>
+      <Text style={type.small}>Field now</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4 }}>
+        <Text style={{ fontSize: 22, fontWeight: '600', color: color.text, letterSpacing: -0.2 }}>{field.toFixed(0)}</Text>
+        <Text style={[type.small, { marginBottom: 3 }]}>µT</Text>
+        <Text style={[type.small, { marginBottom: 3, marginLeft: 'auto', color: color.textFaint }]}>±{range.toFixed(0)}</Text>
+      </View>
+      <Sparkline values={history} limit={limit} />
+    </View>
+  );
+}
+
+/** Rate and tilt chips; redraw only when the rounded value changes. */
+function LiveChips() {
+  const hz = useLive((s) => Math.round(s.live?.rateHz ?? 0));
+  const tilt = useLive((s) => (s.live ? Math.round(deg(tiltRad(s.live.quat))) : 0));
+  return (
+    <>
+      <Chip text={`${hz} Hz`} tone={hz > 50 ? 'good' : 'warn'} />
+      <Chip text={`Tilt ${tilt}°`} tone={tilt > deg(FLAT_MAX_RAD) ? 'warn' : 'good'} />
+    </>
+  );
+}
+
+/** Warning strips for the sensor limit and a tilted phone. */
+function LiveToasts({ limit }: { limit: number }) {
+  const nearLimit = useLive((s) => !!s.live && limit > 0 && Math.max(...s.live.mag.map(Math.abs)) > limit);
+  const tilt = useLive((s) => (s.live ? Math.round(deg(tiltRad(s.live.quat))) : 0));
+  return (
+    <>
+      {nearLimit ? <Toast text="Near the sensor limit — lift the phone or move away from the magnet" /> : null}
+      {tilt > deg(FLAT_MAX_RAD) ? <Toast text={`Phone tilted ${tilt}° — lay it flat, screen up`} /> : null}
+    </>
+  );
+}
+
+function BackgroundWarning() {
+  const field = useLive((s) => (s.live && s.field > BACKGROUND_MAX_UT ? Math.round(s.field) : 0));
+  return field ? (
+    <Banner tone="warn" text={`Field is ${field} µT — the Earth alone is about 25–65 µT. Move the magnet away before the baseline.`} />
+  ) : null;
+}
+
+/** Seconds since Record, ticking 10 times a second without redrawing the rest of the screen. */
+function RecordLabel({ phase }: { phase: string }) {
+  const elapsed = useElapsed(phase === 'recording');
+  return (
+    <Text style={type.small}>{phase === 'recording' ? `${elapsed.toFixed(1)} s` : phase === 'saving' ? 'Saving…' : 'Record'}</Text>
   );
 }
 
@@ -151,13 +224,16 @@ export default function ScanScreen() {
 
   const range = rangeOf(r.caps);
   const limit = SAFE_FRACTION * range;
-  const live = r.live;
-  const field = live ? liveField(live, r.profile) : 0;
-  const peakAxis = live ? Math.max(...live.mag.map(Math.abs)) : 0;
-  const nearLimit = range > 0 && peakAxis > limit;
-  const tilt = live ? tiltRad(live.quat) : 0;
-  const notFlat = live !== null && tilt > FLAT_MAX_RAD;
-  const elapsed = useElapsed(r.phase === 'recording');
+  const ns = fit?.next_swipe;
+  const suggested = useMemo(
+    () =>
+      ns
+        ? { x0: Math.round(ns.start_m[0] * 1000), y0: Math.round(ns.start_m[1] * 1000), x1: Math.round(ns.end_m[0] * 1000), y1: Math.round(ns.end_m[1] * 1000) }
+        : null,
+    [ns],
+  );
+  const showCurrent = r.phase === 'recording' || r.phase === 'ready';
+  const current = useMemo(() => (showCurrent ? r.line : null), [showCurrent, r.line]);
   const busy = r.phase === 'baseline' || r.phase === 'saving' || r.phase === 'endBaseline';
   const inScan = r.scan !== null;
 
@@ -191,23 +267,8 @@ export default function ScanScreen() {
   if (r.caps && !r.caps.highSamplingRateGranted)
     capWarnings.push('High sampling rate not granted: Android limits sensors to 200 Hz.');
 
-  const panelField = (
-    <View style={{ flex: 1, gap: 4 }}>
-      <Text style={type.small}>Field now</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4 }}>
-        <Text style={{ fontSize: 22, fontWeight: '600', color: color.text, letterSpacing: -0.2 }}>{field.toFixed(0)}</Text>
-        <Text style={[type.small, { marginBottom: 3 }]}>µT</Text>
-        <Text style={[type.small, { marginBottom: 3, marginLeft: 'auto', color: color.textFaint }]}>±{range.toFixed(0)}</Text>
-      </View>
-      <Sparkline values={r.history} limit={limit} />
-    </View>
-  );
-  const toasts = (
-    <>
-      {nearLimit ? <Toast text="Near the sensor limit — lift the phone or move away from the magnet" /> : null}
-      {notFlat ? <Toast text={`Phone tilted ${deg(tilt).toFixed(0)}° — lay it flat, screen up`} /> : null}
-    </>
-  );
+  const panelField = <LiveField range={range} limit={limit} />;
+  const toasts = <LiveToasts limit={limit} />;
 
   if (!inScan)
     return (
@@ -215,8 +276,7 @@ export default function ScanScreen() {
         <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
           <Chip text="No scan" tone="warn" />
           <Chip text="Tracking: ruler" tone="good" />
-          <Chip text={`${(live?.rateHz ?? 0).toFixed(0)} Hz`} tone={(live?.rateHz ?? 0) > 50 ? 'good' : 'warn'} />
-          <Chip text={`Tilt ${deg(tilt).toFixed(0)}°`} tone={notFlat ? 'warn' : 'good'} />
+          <LiveChips />
           <SyncChip />
         </View>
         <Title
@@ -226,12 +286,7 @@ export default function ScanScreen() {
         />
         <Card style={{ gap: space.sm }}>{panelField}</Card>
         {toasts}
-        {live && field > BACKGROUND_MAX_UT ? (
-          <Banner
-            tone="warn"
-            text={`Field is ${field.toFixed(0)} µT — the Earth alone is about 25–65 µT. Move the magnet away before the baseline.`}
-          />
-        ) : null}
+        <BackgroundWarning />
         {capWarnings.map((w) => (
           <Banner key={w} tone="warn" text={w} />
         ))}
@@ -263,11 +318,6 @@ export default function ScanScreen() {
 
   // ---- Scanning: Figma "06 Scan" layout. The camera view becomes a map of the paper until
   // camera tracking (Phase 6).
-  const current = r.phase === 'recording' || r.phase === 'ready' ? r.line : null;
-  const ns = fit?.next_swipe;
-  const suggested = ns
-    ? { x0: Math.round(ns.start_m[0] * 1000), y0: Math.round(ns.start_m[1] * 1000), x1: Math.round(ns.end_m[0] * 1000), y1: Math.round(ns.end_m[1] * 1000) }
-    : null;
   const cancel = () =>
     Alert.alert(
       'Cancel this scan?',
@@ -334,7 +384,7 @@ export default function ScanScreen() {
               disabled={busy}
               onPress={r.phase === 'recording' ? r.stopSwipe : r.startSwipe}
             />
-            <Text style={type.small}>{r.phase === 'recording' ? `${elapsed.toFixed(1)} s` : r.phase === 'saving' ? 'Saving…' : 'Record'}</Text>
+            <RecordLabel phase={r.phase} />
           </View>
           <Button title="Finish" kind="secondary" disabled={busy || r.phase === 'recording'} onPress={r.finishScan} />
         </View>
