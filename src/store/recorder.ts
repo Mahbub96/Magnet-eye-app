@@ -21,7 +21,7 @@ import type { Vec3 } from '../utils/quaternion';
 
 /** Stay under this share of the sensor range (Phase 1 pass bar, SAFE_FRACTION). */
 export const SAFE_FRACTION = 0.7;
-const BASELINE_MS = 2000;
+export const BASELINE_MS = 2000;
 const HISTORY = 90;
 
 export type Phase = 'idle' | 'baseline' | 'ready' | 'recording' | 'saving' | 'endBaseline';

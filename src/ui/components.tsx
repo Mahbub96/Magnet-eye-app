@@ -184,6 +184,41 @@ export function Field(props: TextInputProps & { label: string }) {
   );
 }
 
+/** Thin progress track (Figma: 4 px, surface2 track, accent fill). value is 0-1. */
+export function ProgressBar({ value, tint = color.accent, track = color.surface2 }: {
+  value: number;
+  tint?: string;
+  track?: string;
+}) {
+  return (
+    <View style={{ height: 4, borderRadius: 2, backgroundColor: track, overflow: 'hidden' }}>
+      <View
+        style={{
+          width: `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`,
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: tint,
+        }}
+      />
+    </View>
+  );
+}
+
+/** A dot on a tinted square or circle, the Figma list-item icon. */
+export function TintIcon({ tint, round, size = 8 }: { tint: string; round?: boolean; size?: number }) {
+  return (
+    <View
+      style={{
+        padding: 7,
+        borderRadius: round ? 999 : 10,
+        backgroundColor: tint + '24', // ~14 % opacity
+      }}
+    >
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tint }} />
+    </View>
+  );
+}
+
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: color.bg },
   content: { padding: space.lg, gap: space.md, paddingBottom: space.xxl },

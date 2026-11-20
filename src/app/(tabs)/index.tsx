@@ -1,9 +1,12 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { canScan } from '../../modules/capture/deviceCheck';
 import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
-import { rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
+import { BASELINE_MS, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
+import { BeforeYouScan } from '../../ui/BeforeYouScan';
+import { NoMagnetometer } from '../../ui/NoMagnetometer';
 import {
   Banner,
   Button,
@@ -89,6 +92,7 @@ function useElapsed(running: boolean) {
 export default function ScanScreen() {
   const r = useRecorder();
   const [name, setName] = useState('');
+  const [sheet, setSheet] = useState(false);
   const init = useRecorder((s) => s.init);
   useFocusEffect(useCallback(() => init(), [init]));
 
@@ -114,6 +118,8 @@ export default function ScanScreen() {
       </Screen>
     );
   }
+
+  if (r.caps && !canScan(r.caps)) return <NoMagnetometer onViewSaved={() => router.navigate('/saved')} />;
 
   const s = r.caps?.sensors;
   const capWarnings: string[] = [];
@@ -180,18 +186,18 @@ export default function ScanScreen() {
       {!inScan ? (
         <>
           <Field label="Scan name" placeholder="e.g. Ring magnet" value={name} onChangeText={setName} />
-          <Card style={{ gap: space.xs }}>
-            <Text style={[type.heading, { fontSize: 15 }]}>Baseline (2 s)</Text>
-            <Text style={type.body}>
-              Magnet at least 50 cm away. Lay the phone flat on the paper with its top pointing along +y and keep it still.
-              This fixes the axes and measures the background field and the noise.
-            </Text>
-          </Card>
-          <Button
-            title={r.phase === 'baseline' ? 'Measuring…' : 'Measure baseline and start'}
-            busy={r.phase === 'baseline'}
-            disabled={!r.caps}
-            onPress={() => r.startScan(name)}
+          <Button title="Start a scan" disabled={!r.caps} onPress={() => setSheet(true)} />
+          <BeforeYouScan
+            visible={sheet && !inScan}
+            measuring={r.phase === 'baseline'}
+            baselineMs={BASELINE_MS}
+            error={r.phase === 'idle' && r.message && r.message !== 'Scan saved' ? r.message : null}
+            onStart={async () => {
+              await r.startScan(name);
+              // Close once the baseline is accepted; on a refusal the sheet shows why.
+              if (useRecorder.getState().scan) setSheet(false);
+            }}
+            onClose={() => setSheet(false)}
           />
         </>
       ) : (

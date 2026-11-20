@@ -1,6 +1,8 @@
+import { Redirect } from 'expo-router';
 import { Tabs } from 'expo-router/js-tabs';
 import { View } from 'react-native';
 
+import { getSetting, ONBOARDED } from '../../db/settings';
 import { color } from '../../ui/theme';
 
 /** Minimal line icons drawn with views, matching the Figma tab bar. */
@@ -28,6 +30,8 @@ function Icon({ name, active }: { name: 'scan' | 'saved' | 'settings'; active: b
 }
 
 export default function TabsLayout() {
+  // First run: welcome and phone check before the app itself.
+  if (getSetting(ONBOARDED) !== '1') return <Redirect href="/welcome" />;
   return (
     <Tabs
       screenOptions={{

@@ -46,8 +46,9 @@ npm test
 ## Recording a swipe (ruler mode)
 
 1. Tape a sheet of paper to a wooden or plastic table, away from steel and laptops. Draw x and y axes.
-2. With the magnet at least 50 cm away, lay the phone flat with its top edge pointing along +y
-   and press **Measure baseline and start**. Keep it still for 2 seconds.
+2. With the magnet at least 50 cm away, lay the phone flat with its top edge pointing along +y,
+   press **Start a scan**, read the checklist, then **Start scanning**. Keep it still for 2 seconds;
+   the baseline is refused if the phone is tilted or the magnet is too close.
 3. Put the magnet at the origin. Enter the swipe line in millimetres, place the centre of the
    phone's top edge on the start mark, press record, slide steadily along the ruler to the end
    mark, press stop.
@@ -57,7 +58,8 @@ npm test
 ## Layout
 
 ```
-src/app/             Expo Router screens (tabs: Scan, Saved, Settings; scan/[id])
+src/app/             Expo Router screens (first run: welcome, device-check; tabs: Scan, Saved,
+                     Settings; scan/[id]; no-magnetometer)
 src/modules/capture/ swipe format v1 types, builder, validator, baseline
 src/db/              SQLite schema and repositories
 src/store/           Zustand recorder store

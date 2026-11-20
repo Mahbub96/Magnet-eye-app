@@ -33,6 +33,10 @@ const MIGRATIONS: string[] = [
      mean_speed_m_s REAL,
      UNIQUE (scan_id, ord)
    );`,
+  `CREATE TABLE setting (
+     key TEXT PRIMARY KEY NOT NULL,
+     value TEXT NOT NULL
+   );`,
 ];
 
 let db: SQLiteDatabase | null = null;
