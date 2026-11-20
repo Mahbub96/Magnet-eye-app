@@ -15,8 +15,10 @@ import {
   saveSwipe,
   type SwipeRow,
 } from '../db/scans';
+import { activeProfile, type CalibrationProfile } from '../db/profiles';
 import { sqliteRepo, swipeWasUploaded } from '../db/sync';
 import { measureBaseline } from '../modules/capture/baseline';
+import { apply, type Mat3 } from '../modules/capture/ironFit';
 import { buildSwipe, validateSwipe } from '../modules/capture/buildSwipe';
 import { baselineProblem, swipeProblems } from '../modules/capture/quality';
 import { useSync } from '../sync/useSync';
@@ -25,6 +27,11 @@ import type { Vec3 } from '../utils/quaternion';
 /** Stay under this share of the sensor range (Phase 1 pass bar, SAFE_FRACTION). */
 export const SAFE_FRACTION = 0.7;
 export const BASELINE_MS = 2000;
+const IDENTITY: Mat3 = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+];
 const HISTORY = 90;
 
 export type Phase = 'idle' | 'baseline' | 'ready' | 'recording' | 'saving' | 'endBaseline';
@@ -32,11 +39,15 @@ export type Phase = 'idle' | 'baseline' | 'ready' | 'recording' | 'saving' | 'en
 /** Planned swipe line on the paper, millimetres; z is the phone's height above the paper. */
 export type Line = { x0: number; y0: number; x1: number; y1: number; z: number; step: number };
 
+/** The calibration a scan uses: the phone's own profile (Phase 5) or Android's estimate. */
+export type Iron = { source: 'profile' | 'android_estimate'; profileId: string | null; hardIron: Vec3; softIron: Mat3 };
+
 export type ActiveScan = {
   id: string;
   name: string;
   yawAlignment: number;
   androidBias: Vec3;
+  iron: Iron;
   noise: Vec3;
   rangeUt: number;
   baselineStart: Vec3;
@@ -50,6 +61,8 @@ export type LastSwipe = SwipeRow & { problems: string[]; warnings: string[] };
 type State = {
   caps: Capabilities | null;
   capsError: string | null;
+  /** Active calibration profile, when this phone has the raw sensor it applies to. */
+  profile: CalibrationProfile | null;
   live: LiveSample | null;
   history: number[];
   phase: Phase;
@@ -72,6 +85,12 @@ type State = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Field strength of a live sample in µT, corrected with the profile if there is one. */
+export function liveField(s: LiveSample, p: CalibrationProfile | null): number {
+  if (p) return Math.hypot(...apply(p.soft_iron, p.hard_iron_ut, s.mag));
+  return Math.hypot(s.mag[0] - s.bias[0], s.mag[1] - s.bias[1], s.mag[2] - s.bias[2]);
+}
+
 export function rangeOf(caps: Capabilities | null): number {
   const s = caps?.sensors.magnetometerUncalibrated ?? caps?.sensors.magnetometer;
   return s?.maxRange ?? 0;
@@ -80,6 +99,7 @@ export function rangeOf(caps: Capabilities | null): number {
 export const useRecorder = create<State>((set, get) => ({
   caps: null,
   capsError: null,
+  profile: null,
   live: null,
   history: [],
   phase: 'idle',
@@ -92,13 +112,14 @@ export const useRecorder = create<State>((set, get) => ({
 
   init: () => {
     try {
-      set({ caps: MagnetCapture.getCapabilities(), capsError: null });
+      const caps = MagnetCapture.getCapabilities();
+      set({ caps, capsError: null, profile: caps.sensors.magnetometerUncalibrated ? activeProfile() : null });
     } catch (e) {
       set({ capsError: String((e as Error).message ?? e) });
       return () => {};
     }
     const sub = MagnetCapture.addListener('onSample', (s) => {
-      const b = Math.hypot(s.mag[0] - s.bias[0], s.mag[1] - s.bias[1], s.mag[2] - s.bias[2]);
+      const b = liveField(s, get().profile);
       const h = get().history;
       set({ live: s, history: h.length >= HISTORY ? [...h.slice(1), b] : [...h, b] });
     });
@@ -125,7 +146,8 @@ export const useRecorder = create<State>((set, get) => ({
     await sleep(BASELINE_MS);
     const raw = MagnetCapture.stopRecording();
     try {
-      const b = measureBaseline(raw);
+      const p = get().profile;
+      const b = measureBaseline(raw, undefined, p ? { hardIron: p.hard_iron_ut, softIron: p.soft_iron } : undefined);
       if (b.maxTiltChangeRad > 0.05) throw new Error('The phone moved. Keep it still and try again.');
       const why = baselineProblem(b);
       if (why) throw new Error(why);
@@ -134,6 +156,10 @@ export const useRecorder = create<State>((set, get) => ({
         name: name.trim() || `Scan ${new Date().toLocaleString()}`,
         yawAlignment: b.yawAlignment,
         androidBias: b.androidBias,
+        // A profile replaces Android's estimate; the estimate is frozen for the scan otherwise.
+        iron: p
+          ? { source: 'profile', profileId: p.id, hardIron: p.hard_iron_ut, softIron: p.soft_iron }
+          : { source: 'android_estimate', profileId: null, hardIron: b.androidBias, softIron: IDENTITY },
         noise: b.noise,
         rangeUt: rangeOf(get().caps),
         baselineStart: b.fieldWorld,
@@ -180,14 +206,10 @@ export const useRecorder = create<State>((set, get) => ({
         yawAlignment: scan.yawAlignment,
         baselineStart: swipeCount === 0 ? scan.baselineStart : null,
         calibration: {
-          source: 'android_estimate',
-          profile_id: null,
-          hard_iron_ut: scan.androidBias,
-          soft_iron: [
-            [1, 0, 0],
-            [0, 1, 0],
-            [0, 0, 1],
-          ],
+          source: scan.iron.source,
+          profile_id: scan.iron.profileId,
+          hard_iron_ut: scan.iron.hardIron,
+          soft_iron: scan.iron.softIron,
           noise_ut: scan.noise,
           range_ut: scan.rangeUt,
           saturation_threshold_ut: 0.98 * scan.rangeUt,
@@ -256,10 +278,11 @@ export const useRecorder = create<State>((set, get) => ({
     let end: Vec3 | null = null;
     let note: string | null = null;
     try {
-      const b = measureBaseline(raw, {
-        yawAlignment: scan.yawAlignment,
-        androidBias: scan.androidBias,
-      });
+      const b = measureBaseline(
+        raw,
+        { yawAlignment: scan.yawAlignment, androidBias: scan.androidBias },
+        scan.iron.source === 'profile' ? { hardIron: scan.iron.hardIron, softIron: scan.iron.softIron } : undefined,
+      );
       // A bad end baseline is dropped rather than stored; the start baseline still stands.
       note = baselineProblem(b);
       end = note ? null : b.fieldWorld;

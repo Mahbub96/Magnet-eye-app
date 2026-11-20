@@ -1,3 +1,4 @@
+import * as Application from 'expo-application';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, View } from 'react-native';
@@ -9,7 +10,8 @@ import type { ResultSummary } from '../../db/sync';
 import { canScan } from '../../modules/capture/deviceCheck';
 import type { PhoneProfile } from '../../modules/capture/profile';
 import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
-import { BASELINE_MS, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
+import { recalibrationReason } from '../../modules/capture/recalibrate';
+import { BASELINE_MS, liveField, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
 import { useSync } from '../../sync/useSync';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
 import { MagnetMoved } from '../../ui/MagnetMoved';
@@ -150,9 +152,7 @@ export default function ScanScreen() {
   const range = rangeOf(r.caps);
   const limit = SAFE_FRACTION * range;
   const live = r.live;
-  const field = live
-    ? Math.hypot(live.mag[0] - live.bias[0], live.mag[1] - live.bias[1], live.mag[2] - live.bias[2])
-    : 0;
+  const field = live ? liveField(live, r.profile) : 0;
   const peakAxis = live ? Math.max(...live.mag.map(Math.abs)) : 0;
   const nearLimit = range > 0 && peakAxis > limit;
   const tilt = live ? tiltRad(live.quat) : 0;
@@ -169,6 +169,16 @@ export default function ScanScreen() {
       </Screen>
     );
   }
+
+  // Recalibration prompt (Phase 5): only where a profile can apply (raw sensor present).
+  const recal =
+    r.caps?.sensors.magnetometerUncalibrated
+      ? recalibrationReason(r.profile, {
+          model: `${r.caps.manufacturer} ${r.caps.model}`,
+          android_sdk: r.caps.sdkInt,
+          app_version: Application.nativeApplicationVersion ?? '0.0.0',
+        })
+      : null;
 
   if (r.caps && !canScan(r.caps)) return <NoMagnetometer onViewSaved={() => router.navigate('/saved')} />;
 
@@ -225,6 +235,14 @@ export default function ScanScreen() {
         {capWarnings.map((w) => (
           <Banner key={w} tone="warn" text={w} />
         ))}
+        {recal ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push({ pathname: '/calibrate', params: { from: 'settings' } })}
+          >
+            <Banner tone="info" text={`${recal} Tap to calibrate.`} />
+          </Pressable>
+        ) : null}
         {r.message ? <Banner tone={r.message === 'Scan saved' ? 'good' : 'warn'} text={r.message} /> : null}
         <Field label="Scan name" placeholder="e.g. Ring magnet" value={name} onChangeText={setName} />
         <Button title="Start a scan" disabled={!r.caps} onPress={() => setSheet(true)} />

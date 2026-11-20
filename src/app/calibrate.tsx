@@ -1,10 +1,13 @@
+import * as Application from 'expo-application';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import MagnetCapture from '../../modules/magnet-capture/src';
+import { type CalibrationProfile, saveProfile } from '../db/profiles';
 import { CALIBRATION, ONBOARDED, setSetting } from '../db/settings';
+import { fitIron } from '../modules/capture/ironFit';
 import { nearestBin, SPHERE_BINS } from '../modules/capture/profile';
 import { rows, stdVec } from '../modules/capture/stats';
 import { useSensorStream } from '../modules/capture/useStream';
@@ -18,7 +21,7 @@ const STEPS = ['Away from metal', 'Figure eight', 'Baseline', 'Noise test'];
 const COVERED_ENOUGH = 0.85; // share of the 26 directions
 const STILL_MS = 2000;
 
-type Result = { coverage: number; fieldUt: number; noiseUt: number; at: string };
+type Result = { coverage: number; fieldUt: number; noiseUt: number; at: string; profile: CalibrationProfile | null };
 
 /** Figma "04 Calibration". Measures how much of the sphere the figure eight covered, the
  * background field and the noise. Fitting the hard- and soft-iron model from these readings
@@ -29,6 +32,7 @@ export default function CalibrateScreen() {
   const [step, setStep] = useState(0);
   const [bins, setBins] = useState<Set<number>>(() => new Set());
   const binsRef = useRef(new Set<number>());
+  const [fig, setFig] = useState<Vec3[] | null>(null); // raw readings of the figure eight
   const [still, setStill] = useState<{ fieldUt?: number; noiseUt?: number }>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<Result | null>(null);
@@ -37,6 +41,7 @@ export default function CalibrateScreen() {
   // Figure eight: count the directions the field has pointed in, in the phone frame.
   useEffect(() => {
     if (step !== 1) return;
+    MagnetCapture.startRecording();
     const sub = MagnetCapture.addListener('onSample', (s) => {
       const v: Vec3 = [s.mag[0] - s.bias[0], s.mag[1] - s.bias[1], s.mag[2] - s.bias[2]];
       const b = nearestBin(v);
@@ -45,8 +50,17 @@ export default function CalibrateScreen() {
         setBins(new Set(binsRef.current));
       }
     });
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      if (MagnetCapture.isRecording()) MagnetCapture.stopRecording();
+    };
   }, [step]);
+
+  const endFigureEight = () => {
+    const raw = MagnetCapture.stopRecording();
+    setFig(rows(raw.mag, 7).map((r) => [r[1], r[2], r[3]] as Vec3));
+    setStep(2);
+  };
 
   const measureStill = async (what: 'field' | 'noise') => {
     setBusy(true);
@@ -62,7 +76,27 @@ export default function CalibrateScreen() {
     } else {
       const sd = stdVec(mag.map((r) => [r[1], r[2], r[3]] as Vec3));
       const noiseUt = Math.sqrt((sd[0] ** 2 + sd[1] ** 2 + sd[2] ** 2) / 3);
-      const result: Result = { coverage, fieldUt: still.fieldUt ?? 0, noiseUt, at: new Date().toISOString() };
+      const fit = fig ? fitIron(fig) : null;
+      const caps = MagnetCapture.getCapabilities();
+      // Only a phone with the uncalibrated sensor gets its own correction: on the calibrated
+      // stream Android has already removed the phone's magnetism.
+      const profile =
+        fit && caps.sensors.magnetometerUncalibrated
+          ? saveProfile({
+              app_version: Application.nativeApplicationVersion ?? '0.0.0',
+              model: `${caps.manufacturer} ${caps.model}`,
+              android_sdk: caps.sdkInt,
+              hard_iron_ut: fit.hardIronUt,
+              soft_iron: fit.softIron,
+              field_ut: fit.fieldUt,
+              residual_ut: fit.residualUt,
+              fit_model: fit.model,
+              coverage,
+              noise_ut: noiseUt,
+              background_ut: still.fieldUt ?? 0,
+            })
+          : null;
+      const result: Result = { coverage, fieldUt: still.fieldUt ?? 0, noiseUt, at: new Date().toISOString(), profile };
       setSetting(CALIBRATION, JSON.stringify(result));
       setDone(result);
     }
@@ -115,10 +149,19 @@ export default function CalibrateScreen() {
               tone="good"
               text={`Measured: ${Math.round(done.coverage * 100)}% of directions, background ${done.fieldUt.toFixed(0)} µT, noise ${done.noiseUt.toFixed(1)} µT.`}
             />
-            <Banner
-              tone="info"
-              text="Fitting your phone’s own magnetism from these readings arrives in a later version. Until then Magnet Eye uses Android’s estimate."
-            />
+            {done.profile ? (
+              <Banner
+                tone="good"
+                text={`Your phone’s own field: ${Math.hypot(...done.profile.hard_iron_ut).toFixed(0)} µT, corrected with a${
+                  done.profile.fit_model === 'ellipsoid' ? 'n ellipsoid (offset and shape)' : ' sphere (offset only)'
+                } fit to ±${done.profile.residual_ut.toFixed(1)} µT. Scans use this calibration from now on.`}
+              />
+            ) : (
+              <Banner
+                tone="warn"
+                text="No calibration could be fitted (too few directions, or this phone only has Android’s calibrated sensor). Android’s own estimate stays in use."
+              />
+            )}
           </View>
         ) : null}
 
@@ -128,7 +171,7 @@ export default function CalibrateScreen() {
           <Button
             title={coverage >= COVERED_ENOUGH ? 'Next' : 'Keep going…'}
             disabled={coverage < COVERED_ENOUGH}
-            onPress={() => setStep(2)}
+            onPress={endFigureEight}
           />
         ) : null}
         {step === 2 ? <Button title="Measure background" busy={busy} onPress={() => measureStill('field')} /> : null}

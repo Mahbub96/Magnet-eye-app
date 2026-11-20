@@ -1,8 +1,10 @@
 import * as Application from 'expo-application';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 import { getServerUrl } from '../../api/server';
-import { useMemo } from 'react';
+import { activeProfile, resetProfiles } from '../../db/profiles';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert } from 'react-native';
 
 import MagnetCapture, { type Capabilities, type SensorKey } from '../../../modules/magnet-capture/src';
 import { FORMAT_VERSION } from '../../modules/capture/swipeFormat';
@@ -19,6 +21,8 @@ const LABELS: Record<SensorKey, [string, string]> = {
 };
 
 export default function SettingsScreen() {
+  const [profile, setProfile] = useState(activeProfile);
+  useFocusEffect(useCallback(() => setProfile(activeProfile()), []));
   const caps = useMemo<Capabilities | Error>(() => {
     try {
       return MagnetCapture.getCapabilities();
@@ -69,6 +73,34 @@ export default function SettingsScreen() {
           sub={getServerUrl() ?? 'Not set: swipes wait on the phone'}
           right="›"
           onPress={() => router.push('/server')}
+        />
+      </Card>
+      <Card>
+        <Row
+          title="Calibration profile"
+          sub={
+            profile
+              ? `${new Date(profile.created_at).toLocaleDateString()} · ${profile.fit_model} fit ±${profile.residual_ut.toFixed(1)} µT · own field ${Math.hypot(...profile.hard_iron_ut).toFixed(0)} µT`
+              : 'None: Android’s own estimate is used'
+          }
+          right={profile ? 'Reset' : undefined}
+          tone={profile ? 'good' : 'warn'}
+          onPress={
+            profile
+              ? () =>
+                  Alert.alert('Reset calibration?', 'Scanning goes back to Android’s own estimate until you calibrate again.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Reset',
+                      style: 'destructive',
+                      onPress: () => {
+                        resetProfiles();
+                        setProfile(null);
+                      },
+                    },
+                  ])
+              : undefined
+          }
         />
       </Card>
       <Card>

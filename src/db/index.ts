@@ -44,6 +44,17 @@ const MIGRATIONS: string[] = [
    ALTER TABLE swipe ADD COLUMN upload_state TEXT NOT NULL DEFAULT 'pending'; -- pending | uploaded | rejected
    ALTER TABLE swipe ADD COLUMN upload_error TEXT;
    ALTER TABLE swipe ADD COLUMN job_id TEXT;`,
+  // Phase 5: calibration profiles (SRS 5). The newest active one is used for scanning.
+  `CREATE TABLE profile (
+     id TEXT PRIMARY KEY NOT NULL,
+     created_at TEXT NOT NULL,
+     app_version TEXT NOT NULL,
+     schema_version INTEGER NOT NULL,
+     model TEXT NOT NULL,
+     android_sdk INTEGER NOT NULL,
+     data TEXT NOT NULL,                -- JSON CalibrationProfile
+     active INTEGER NOT NULL DEFAULT 1
+   );`,
 ];
 
 let db: SQLiteDatabase | null = null;

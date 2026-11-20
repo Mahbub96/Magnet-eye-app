@@ -1,6 +1,7 @@
 import type { RawRecording } from '../../../modules/magnet-capture/src/MagnetCapture.types';
 import type { Quat, Vec3 } from '../../utils/quaternion';
 import { aboutZ, headingOfTop, mean as meanQuat, multiply } from '../../utils/quaternion';
+import { apply, type Mat3 } from './ironFit';
 import { tiltRad } from './quality';
 import { meanVec, rateHz, rows, stdVec, toWorld } from './stats';
 
@@ -27,6 +28,8 @@ export type BaselineResult = {
 export function measureBaseline(
   raw: RawRecording,
   fixed?: { yawAlignment: number; androidBias: Vec3 },
+  /** The phone's own calibration (profile); without it, Android's bias estimate is removed. */
+  iron?: { hardIron: Vec3; softIron: Mat3 },
 ): BaselineResult {
   const mag = rows(raw.mag, 7);
   const rot = rows(raw.rot, 5);
@@ -39,7 +42,9 @@ export function measureBaseline(
   const aligned = qs.map((q) => multiply(a, q));
   const world = toWorld(
     mag.map((r) => r[0]),
-    mag.map((r) => [r[1] - bias[0], r[2] - bias[1], r[3] - bias[2]] as Vec3),
+    mag.map((r) =>
+      iron ? apply(iron.softIron, iron.hardIron, [r[1], r[2], r[3]]) : ([r[1] - bias[0], r[2] - bias[1], r[3] - bias[2]] as Vec3),
+    ),
     rot.map((r) => r[0]),
     aligned,
   );
