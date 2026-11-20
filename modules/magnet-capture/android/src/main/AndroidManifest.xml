@@ -1,0 +1,4 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Android 12+ caps sensors at 200 Hz without this; it is a normal (install-time) permission. -->
+  <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+</manifest>
