@@ -41,17 +41,19 @@ export default function DeviceCheckScreen() {
   const done = checks.length > 0 && shown >= checks.length;
 
   const finish = () => {
-    setSetting(ONBOARDED, '1');
     if (from === 'settings' && router.canGoBack()) router.back();
-    else if (!(caps instanceof Error) && canScan(caps)) router.replace('/');
-    else router.replace('/no-magnetometer');
+    else if (!(caps instanceof Error) && canScan(caps)) router.push('/capability');
+    else {
+      setSetting(ONBOARDED, '1'); // nothing more to set up on a phone that cannot scan
+      router.replace('/no-magnetometer');
+    }
   };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }}>
       <View style={{ flex: 1, paddingHorizontal: 20, paddingVertical: space.xl, gap: 20 }}>
         <View style={{ gap: 6 }}>
-          <Text style={type.label}>PHONE CHECK</Text>
+          <Text style={type.label}>{from === 'settings' ? 'PHONE CHECK' : 'STEP 1 OF 3'}</Text>
           <Text style={[type.title, { fontSize: 24 }]}>Checking your phone</Text>
           <Text style={[type.body, { lineHeight: 21 }]}>
             {caps instanceof Error

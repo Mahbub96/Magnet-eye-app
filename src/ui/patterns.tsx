@@ -1,6 +1,7 @@
 import { Children, type ReactNode } from 'react';
 import { Modal, Pressable, View, type ViewStyle } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
 
 import { Button } from './components';
 import { Text } from './Text';
@@ -156,27 +157,29 @@ const GRADE: Record<Grade, { label: string; tint: string }> = {
 };
 
 /** Figma metric card (Your phone can scan): label, value, graded chip. */
-export function MetricCard({ label, value, grade }: { label: string; value: string; grade: Grade }) {
-  const g = GRADE[grade];
+export function MetricCard({ label, value, grade }: { label: string; value: string; grade?: Grade }) {
+  const g = grade ? GRADE[grade] : null;
   return (
     <View style={{ flex: 1, gap: 10, padding: 14, borderRadius: 16, backgroundColor: color.surface }}>
       <Text style={type.small}>{label}</Text>
       <Text style={{ fontSize: 20, fontWeight: '600', color: color.text, letterSpacing: -0.2 }}>{value}</Text>
-      <View
-        style={{
-          alignSelf: 'flex-start',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-          borderRadius: 999,
-          backgroundColor: g.tint + '24',
-        }}
-      >
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: g.tint }} />
-        <Text style={{ fontSize: 11, fontWeight: '500', color: g.tint }}>{g.label}</Text>
-      </View>
+      {g ? (
+        <View
+          style={{
+            alignSelf: 'flex-start',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 999,
+            backgroundColor: g.tint + '24',
+          }}
+        >
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: g.tint }} />
+          <Text style={{ fontSize: 11, fontWeight: '500', color: g.tint }}>{g.label}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -190,6 +193,48 @@ export function Toast({ text, tint = color.warn }: { text: string; tint?: string
     >
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color.accentText }} />
       <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: color.accentText }}>{text}</Text>
+    </View>
+  );
+}
+
+/** Figma progress ring (Calibrate): track and accent arc, value 0-1, a label in the middle. */
+export function ProgressRing({ value, size = 200, stroke = 6, children }: {
+  value: number;
+  size?: number;
+  stroke?: number;
+  children?: ReactNode;
+}) {
+  const r = (size - stroke) / 2;
+  const len = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(1, value));
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ position: 'absolute' }}>
+        <Circle cx={size / 2} cy={size / 2} r={r} stroke={color.surface2} strokeWidth={stroke} fill="none" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={color.accent}
+          strokeWidth={stroke}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${len * v} ${len}`}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </Svg>
+      {children}
+    </View>
+  );
+}
+
+/** Screen header used by the first-run steps: small label, title, text. */
+export function StepHeader({ label, title, text }: { label: string; title: string; text: string }) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={type.label}>{label}</Text>
+      <Text style={[type.title, { fontSize: 24 }]}>{title}</Text>
+      <Text style={[type.body, { lineHeight: 21 }]}>{text}</Text>
     </View>
   );
 }

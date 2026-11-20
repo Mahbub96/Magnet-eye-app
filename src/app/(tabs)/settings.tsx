@@ -73,6 +73,14 @@ export default function SettingsScreen() {
       </Card>
       <Card>
         <Row
+          title="Calibrate"
+          sub="Figure eight, background field and noise (about 30 s)"
+          right="›"
+          onPress={() => router.push({ pathname: '/calibrate', params: { from: 'settings' } })}
+        />
+      </Card>
+      <Card>
+        <Row
           title="Re-run phone check"
           sub="Test the sensors again, e.g. after an Android update"
           right="›"

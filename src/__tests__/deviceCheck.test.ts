@@ -3,6 +3,8 @@ import { expect, test } from '@jest/globals';
 import type { Capabilities, SensorInfo } from '../../modules/magnet-capture/src/MagnetCapture.types';
 import { canScan, deviceChecks } from '../modules/capture/deviceCheck';
 
+import { gradeNoise, gradeRate, measureProfile, nearestBin, SPHERE_BINS } from '../modules/capture/profile';
+
 const sensor = (over: Partial<SensorInfo> = {}): SensorInfo => ({
   name: 's',
   vendor: 'v',
@@ -59,4 +61,24 @@ test('no magnetometer at all cannot scan', () => {
 
 test('high sampling rate not granted is limited', () => {
   expect(byKey(caps({}, false)).highSamplingRate.status).toBe('limited');
+});
+
+test('profile from a still recording: rate, noise and the swipe speed range', () => {
+  const mag: number[] = [];
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2;
+  for (let i = 0; i < 200; i++) mag.push(1e9 + i * 1e7, 10 + rnd(), 20 + rnd(), -40 + rnd(), 0, 0, 0);
+  const p = measureProfile({ startNs: 0, stopNs: 0, magSensor: 'uncalibrated', mag, rot: [], acc: [], gyr: [], overflow: false }, caps());
+  expect(p.rateHz).toBeCloseTo(100, 6);
+  expect(p.noiseUt).toBeGreaterThan(0.4);
+  expect(p.noiseUt).toBeLessThan(0.7); // uniform in ±1 has sd 0.577
+  expect(p.speedMaxCmS).toBe(10);
+  expect(p.readingEveryMm).toBeCloseTo(1, 6);
+  expect(gradeRate(p.rateHz)).toBe('good');
+  expect(gradeNoise(3.5)).toBe('poor');
+});
+
+test('coverage bins: 26 directions, each its own nearest', () => {
+  expect(SPHERE_BINS).toHaveLength(26);
+  SPHERE_BINS.forEach((b, i) => expect(nearestBin([b[0] * 50, b[1] * 50, b[2] * 50])).toBe(i));
 });
