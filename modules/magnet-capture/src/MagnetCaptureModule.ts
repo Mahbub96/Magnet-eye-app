@@ -5,8 +5,11 @@ import type { Capabilities, MagnetCaptureModuleEvents, RawRecording } from './Ma
 declare class MagnetCaptureModule extends NativeModule<MagnetCaptureModuleEvents> {
   readonly clockOriginNs: string;
   getCapabilities(): Capabilities;
+  getArcoreStatus(): string;
   startStreaming(): void;
   stopStreaming(): void;
+  startArcore(): void;
+  stopArcore(): void;
   startRecording(): void;
   stopRecording(): RawRecording;
   isRecording(): boolean;

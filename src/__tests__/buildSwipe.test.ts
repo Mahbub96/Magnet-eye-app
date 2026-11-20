@@ -190,3 +190,29 @@ test('baseline is refused when the phone is not flat or the magnet is near', () 
   expect(baselineProblem(near)).toMatch(/277 µT/);
   expect(baselineProblem({ ...flat, fieldWorld: [5, 5, 5] })).toMatch(/only 9 µT/);
 });
+
+test('an ARCore swipe carries 6DoF camera poses and passes validation', () => {
+  const base = synth({ yaw: 0, bWorld: earth, bias, seconds: 2 });
+  const arcorePos: number[] = [];
+  const arcoreRot: number[] = [];
+  for (let i = 0; i < 120; i++) {
+    const t = 5e9 + i * 1.66e7;
+    // 3D curved trajectory over the magnet
+    arcorePos.push(t, 0.05 * Math.cos(i * 0.05), 0.05 * Math.sin(i * 0.05), 0.03, 1, 1.0);
+    arcoreRot.push(t, 1.0, 0.0, 0.0, 0.0);
+  }
+  const rawWithArcore: RawRecording = {
+    ...base,
+    arcorePos,
+    arcoreRot,
+    tableZ: 0.0,
+  };
+  const s = buildSwipe(rawWithArcore, ctx({ trackingMode: 'arcore', plannedLine: null }));
+  expect(s.tracking_mode).toBe('arcore');
+  expect(s.reference_point).toBe('arcore_camera');
+  expect(s.streams.orientation.source).toBe('arcore');
+  expect(s.streams.position.rows).toHaveLength(120);
+  expect(s.streams.position.rows[0]).toEqual([5e9, 0.05, 0, 0.03, 'tracking', 1.0]);
+  expect(s.stats.motion_detected).toBe(true);
+  expect(validateSwipe(s)).toEqual([]);
+});

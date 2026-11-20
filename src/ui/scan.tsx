@@ -115,7 +115,36 @@ function SpeedMeterImpl({ speed, min, max }: { speed: number | null; min: number
   );
 }
 
+/** Visual convergence gauge for Phase 7 (SRS 3.4 SC-11):
+ * Shows uncertainty progress towards the target (15%). */
+function UncertaintyGaugeImpl({ uncertainty }: { uncertainty: number | null }) {
+  if (uncertainty === null) return null;
+  const pct = uncertainty <= 1.0 ? Math.round(uncertainty * 100) : Math.round(uncertainty);
+  const target = 15;
+  const isConverged = pct <= target;
+  const progress = Math.max(5, Math.min(100, Math.round((target / Math.max(target, pct)) * 100)));
+  const barColor = isConverged ? color.good : pct <= 35 ? color.accent : color.warn;
+
+  return (
+    <View style={{ gap: 6, paddingVertical: 4 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={[type.small, { fontWeight: '600', color: isConverged ? color.good : color.text }]}>
+          {isConverged ? '✓ Target accuracy reached' : 'Convergence progress'}
+        </Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: barColor }}>
+          ±{pct}% {isConverged ? '(Ready to finish)' : `(Target: ±${target}%)`}
+        </Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: color.surface2, overflow: 'hidden' }}>
+        <View style={{ width: `${progress}%`, height: '100%', borderRadius: 3, backgroundColor: barColor }} />
+      </View>
+    </View>
+  );
+}
+
 // Redraw only when their own inputs change, not on every live sensor update.
 export const PaperMap = memo(PaperMapImpl);
 export const CoverageGrid = memo(CoverageGridImpl);
 export const SpeedMeter = memo(SpeedMeterImpl);
+export const UncertaintyGauge = memo(UncertaintyGaugeImpl);
+

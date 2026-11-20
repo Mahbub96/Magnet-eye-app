@@ -8,6 +8,9 @@ export type LiveSample = {
   rateHz: number;
   recording: boolean;
   recordedSamples: number;
+  arcoreTracking?: boolean;
+  arcorePlane?: boolean;
+  tableZ?: number;
 };
 
 export type MagnetCaptureModuleEvents = {
@@ -36,6 +39,7 @@ export type SensorKey =
 export type Capabilities = {
   sensors: Record<SensorKey, SensorInfo | null>;
   highSamplingRateGranted: boolean;
+  arcoreStatus: 'ready' | 'needs_install' | 'unsupported' | 'unknown';
   manufacturer: string;
   model: string;
   sdkInt: number;
@@ -47,6 +51,8 @@ export type Capabilities = {
  * (elapsedRealtimeNanos at module load).
  * mag: t, uncal x y z, bias x y z (stride 7) · rot: t, qw qx qy qz (stride 5)
  * acc, gyr: t, x y z (stride 4)
+ * arcorePos: t, px py pz, stateCode, conf (stride 6)
+ * arcoreRot: t, qw qx qy qz (stride 5)
  */
 export type RawRecording = {
   startNs: number;
@@ -56,5 +62,8 @@ export type RawRecording = {
   rot: number[];
   acc: number[];
   gyr: number[];
+  arcorePos?: number[];
+  arcoreRot?: number[];
+  tableZ?: number;
   overflow: boolean;
 };

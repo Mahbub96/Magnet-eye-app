@@ -20,7 +20,7 @@ const sensor = (over: Partial<SensorInfo> = {}): SensorInfo => ({
   ...over,
 });
 
-function caps(over: Partial<Capabilities['sensors']> = {}, granted = true): Capabilities {
+function caps(over: Partial<Capabilities['sensors']> = {}, granted = true, arcore: Capabilities['arcoreStatus'] = 'ready'): Capabilities {
   return {
     sensors: {
       magnetometerUncalibrated: sensor(),
@@ -31,6 +31,7 @@ function caps(over: Partial<Capabilities['sensors']> = {}, granted = true): Capa
       ...over,
     },
     highSamplingRateGranted: granted,
+    arcoreStatus: arcore,
     manufacturer: 'Xiaomi',
     model: 'Redmi Note 9S',
     sdkInt: 31,
@@ -45,7 +46,7 @@ test('a full phone is ready, with the measured range and rate', () => {
   expect(k.magnetometer.status).toBe('ready');
   expect(k.magnetometer.detail).toContain('±4912 µT');
   expect(k.magnetometer.detail).toContain('up to 100 Hz');
-  expect(k.arcore.status).toBe('later');
+  expect(k.arcore.status).toBe('ready');
   expect(canScan(caps())).toBe(true);
 });
 

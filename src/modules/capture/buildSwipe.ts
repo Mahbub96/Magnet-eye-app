@@ -114,11 +114,19 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
     return [r[0], r[1], r[2], r[3], c[0], c[1], c[2], sat ? 1 : 0];
   });
 
-  const align = aboutZ(ctx.yawAlignment);
-  const orientation = rows(raw.rot, 5).map((r) => {
-    const q = normalize(multiply(align, [r[1], r[2], r[3], r[4]] as Quat));
-    return [r[0], ...q];
-  });
+  let orientation: number[][];
+  let orientationSource: 'game_rotation_vector' | 'arcore' = 'game_rotation_vector';
+
+  if (ctx.trackingMode === 'arcore' && raw.arcoreRot && raw.arcoreRot.length > 0) {
+    orientation = rows(raw.arcoreRot, 5);
+    orientationSource = 'arcore';
+  } else {
+    const align = aboutZ(ctx.yawAlignment);
+    orientation = rows(raw.rot, 5).map((r) => {
+      const q = normalize(multiply(align, [r[1], r[2], r[3], r[4]] as Quat));
+      return [r[0], ...q];
+    });
+  }
 
   const acc = rows(raw.acc, 4);
   const gyr = rows(raw.gyr, 4);
@@ -138,7 +146,38 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
   const position: PositionRow[] = [];
   let meanSpeed: number | null = null;
   let motionFound = false;
-  if (ctx.plannedLine && (ctx.trackingMode === 'ruler' || ctx.trackingMode === 'grid')) {
+
+  if (ctx.trackingMode === 'arcore' && raw.arcorePos && raw.arcorePos.length > 0) {
+    const stateMap: Record<number, 'tracking' | 'limited' | 'lost'> = {
+      1: 'tracking',
+      2: 'limited',
+      3: 'lost',
+    };
+    const pRows = rows(raw.arcorePos, 6);
+    for (const r of pRows) {
+      position.push([
+        r[0],
+        r[1],
+        r[2],
+        r[3],
+        stateMap[Math.round(r[4])] ?? 'tracking',
+        r[5],
+      ]);
+    }
+    if (position.length >= 2) {
+      let pathLen = 0;
+      for (let i = 1; i < position.length; i++) {
+        pathLen += Math.hypot(
+          (position[i][1] as number) - (position[i - 1][1] as number),
+          (position[i][2] as number) - (position[i - 1][2] as number),
+          (position[i][3] as number) - (position[i - 1][3] as number),
+        );
+      }
+      const durNs = (position[position.length - 1][0] as number) - (position[0][0] as number);
+      meanSpeed = durNs > 0 ? pathLen / (durNs / 1e9) : null;
+      motionFound = pathLen > 0.02;
+    }
+  } else if (ctx.plannedLine && (ctx.trackingMode === 'ruler' || ctx.trackingMode === 'grid')) {
     const { start, end } = ctx.plannedLine;
     const state = ctx.trackingMode === 'ruler' ? 'ruler_endpoint' : 'grid_mark';
     const motion = accWorld.length ? detectMotion(accWorld) : null;
@@ -169,7 +208,7 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
     clock: { source: 'elapsedRealtimeNanos', origin_ns: ctx.clockOriginNs },
     calibration: { ...cal, sampling_rate_hz: rateHz(mag.map((r) => r[0])) },
     session_geometry: {
-      table_z_m: ctx.tableZ,
+      table_z_m: ctx.trackingMode === 'arcore' && raw.tableZ != null && raw.tableZ !== 0 ? raw.tableZ : ctx.tableZ,
       baseline_start_ut: ctx.baselineStart,
       baseline_end_ut: null,
       yaw_alignment_rad: ctx.yawAlignment,
@@ -181,7 +220,7 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
     streams: {
       mag: { sensor: raw.magSensor, columns: MAG_COLUMNS, rows: mag },
       orientation: {
-        source: 'game_rotation_vector',
+        source: orientationSource,
         columns: ORIENTATION_COLUMNS,
         rows: orientation,
       },

@@ -23,6 +23,7 @@ import type { PhoneProfile } from '../modules/capture/profile';
 import { apply, type Mat3 } from '../modules/capture/ironFit';
 import { buildSwipe, validateSwipe } from '../modules/capture/buildSwipe';
 import { baselineProblem, swipeProblems } from '../modules/capture/quality';
+import type { TrackingMode } from '../modules/capture/swipeFormat';
 import { useSync } from '../sync/useSync';
 import type { Vec3 } from '../utils/quaternion';
 
@@ -78,6 +79,8 @@ type State = {
   done: Line[];
   last: LastSwipe | null;
   message: string | null;
+  trackingMode: TrackingMode;
+  setTrackingMode: (m: TrackingMode) => void;
   init: () => () => void;
   setLine: (l: Partial<Line>) => void;
   startScan: (name: string) => Promise<void>;
@@ -119,6 +122,8 @@ export const useRecorder = create<State>((set, get) => ({
   done: [],
   last: null,
   message: null,
+  trackingMode: 'ruler',
+  setTrackingMode: (trackingMode) => set({ trackingMode }),
 
   init: () => {
     try {
@@ -175,10 +180,18 @@ export const useRecorder = create<State>((set, get) => ({
         baselineStart: b.fieldWorld,
         baselineRateHz: b.rateHz,
       };
+      const mode = get().trackingMode;
+      if (mode === 'arcore') {
+        try {
+          MagnetCapture.startArcore();
+        } catch (err) {
+          console.warn('ARCore start failed:', err);
+        }
+      }
       createScan({
         id: scan.id,
         name: scan.name,
-        trackingMode: 'ruler',
+        trackingMode: mode,
         tableZ: 0,
         yawAlignment: scan.yawAlignment,
         androidBias: scan.androidBias,
@@ -205,14 +218,15 @@ export const useRecorder = create<State>((set, get) => ({
     set({ phase: 'saving' });
     try {
       const mm = (v: number) => v / 1000;
+      const mode = get().trackingMode;
       const swipe = buildSwipe(raw, {
         sessionId: scan.id,
         swipeIndex: swipeCount,
         appVersion: Application.nativeApplicationVersion ?? '0.0.0',
         device: { manufacturer: caps.manufacturer, model: caps.model, android_sdk: caps.sdkInt },
         clockOriginNs: caps.clockOriginNs,
-        trackingMode: 'ruler',
-        tableZ: 0,
+        trackingMode: mode,
+        tableZ: mode === 'arcore' && raw.tableZ ? raw.tableZ : 0,
         yawAlignment: scan.yawAlignment,
         baselineStart: swipeCount === 0 ? scan.baselineStart : null,
         calibration: {
@@ -226,10 +240,13 @@ export const useRecorder = create<State>((set, get) => ({
           sensor_offset_m: [0, 0, 0],
           sensor_offset_source: 'unknown',
         },
-        plannedLine: {
-          start: [mm(line.x0), mm(line.y0), mm(line.z)],
-          end: [mm(line.x1), mm(line.y1), mm(line.z)],
-        },
+        plannedLine:
+          mode === 'arcore'
+            ? null
+            : {
+                start: [mm(line.x0), mm(line.y0), mm(line.z)],
+                end: [mm(line.x1), mm(line.y1), mm(line.z)],
+              },
       });
       const problems = validateSwipe(swipe);
       const warnings = swipeProblems({
@@ -301,6 +318,13 @@ export const useRecorder = create<State>((set, get) => ({
     } catch (e) {
       note = (e as Error).message;
     }
+    if (get().trackingMode === 'arcore') {
+      try {
+        MagnetCapture.stopArcore();
+      } catch (err) {
+        // ignore
+      }
+    }
     await finishScanRow(scan.id, end);
     set({
       phase: 'idle',
@@ -313,6 +337,13 @@ export const useRecorder = create<State>((set, get) => ({
 
   cancelScan: () => {
     const { scan, swipeCount } = get();
+    if (get().trackingMode === 'arcore') {
+      try {
+        MagnetCapture.stopArcore();
+      } catch (err) {
+        // ignore
+      }
+    }
     if (MagnetCapture.isRecording()) MagnetCapture.stopRecording();
     // A scan with no swipes has nothing worth keeping; one with swipes stays (unfinished).
     if (scan && swipeCount === 0) deleteScan(scan.id);

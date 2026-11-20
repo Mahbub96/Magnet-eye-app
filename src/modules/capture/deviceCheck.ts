@@ -50,8 +50,13 @@ export function deviceChecks(caps: Capabilities): DeviceCheck[] {
     {
       key: 'arcore',
       title: 'Camera tracking (ARCore)',
-      status: 'later',
-      detail: 'Checked in a later version · ruler mode for now',
+      status: caps.arcoreStatus === 'ready' ? 'ready' : caps.arcoreStatus === 'needs_install' ? 'limited' : 'missing',
+      detail:
+        caps.arcoreStatus === 'ready'
+          ? 'ARCore supported · Freeform 3D scanning available'
+          : caps.arcoreStatus === 'needs_install'
+            ? 'Install Google Play Services for AR to scan without a ruler'
+            : 'Device does not support ARCore · Ruler mode active',
     },
   ];
 }

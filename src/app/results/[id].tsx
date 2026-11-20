@@ -1,19 +1,17 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import type { FullResult } from '../../api/result';
 import { readResult } from '../../db/export';
 import { getScan } from '../../db/scans';
-import { Banner, Button, Chip, Screen, Stat, Title } from '../../ui/components';
+import { useSync } from '../../sync/useSync';
+import { Banner, Button, Card, Chip, Screen, Stat, Title } from '../../ui/components';
+import { ErrorBoundary } from '../../ui/ErrorBoundary';
 import { ExportSheet } from '../../ui/ExportSheet';
-import type { FieldViewHandle } from '../../ui/FieldView3D';
+import { FieldView3D, type FieldViewHandle } from '../../ui/FieldView3D';
 import { Text } from '../../ui/Text';
 import { color, space, type } from '../../ui/theme';
-
-// The 3D view (three.js, GL) loads only when this screen opens, so a GL problem can never
-// stop the rest of the app from starting.
-const FieldView3D = lazy(() => import('../../ui/FieldView3D').then((m) => ({ default: m.FieldView3D })));
 
 const WARNINGS: Record<string, string> = {
   magnet_may_have_moved: 'The last swipe does not fit the earlier ones: the magnet or table may have moved.',
@@ -21,8 +19,7 @@ const WARNINGS: Record<string, string> = {
   saturated_readings_dropped: 'Some readings hit the sensor limit and were left out.',
 };
 
-/** Figma "07 Results". `id` is a saved scan; in a development build `sample` shows the
- * formula-made sample from src/dev for design review. */
+/** 07 Results Screen with offline safety, network retry, and 3D crash resilience */
 export default function ResultsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isSample = __DEV__ && id === 'sample';
@@ -30,62 +27,146 @@ export default function ResultsScreen() {
   const [missing, setMissing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const view = useRef<FieldViewHandle>(null);
-  const name = isSample ? 'Sample disc magnet' : (getScan(id)?.name ?? 'Scan');
+  const scan = useMemoScan(id);
+  const name = isSample ? 'Sample disc magnet' : (scan?.name ?? 'Scan');
+
+  const { status: syncStatus, pending, kick } = useSync();
+
+  const loadData = async () => {
+    try {
+      const r = isSample ? (await import('../../dev/sample')).sampleResult() : await readResult(id);
+      if (r) {
+        setResult(r);
+        setMissing(false);
+      } else {
+        setMissing(true);
+      }
+    } catch (e) {
+      console.warn('[ResultsScreen] Error loading result:', e);
+      setMissing(true);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const r = isSample ? (await import('../../dev/sample')).sampleResult() : await readResult(id);
+    void (async () => {
       if (!alive) return;
-      if (r) setResult(r);
-      else setMissing(true);
+      await loadData();
     })();
     return () => {
       alive = false;
     };
-  }, [id, isSample]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isSample, syncStatus]);
 
-  const moment = result ? Math.hypot(...result.magnet.moment_am2) : 0;
-  const momentSigma = result ? Math.hypot(...result.magnet.moment_sigma_am2) : 0;
+  const moment = result?.magnet?.moment_am2
+    ? Math.hypot(...result.magnet.moment_am2.map((v) => (isFinite(v) ? v : 0)))
+    : 0;
+  const momentSigma = result?.magnet?.moment_sigma_am2
+    ? Math.hypot(...result.magnet.moment_sigma_am2.map((v) => (isFinite(v) ? v : 0)))
+    : 0;
+  const uncPercent = isFinite(result?.relative_uncertainty as number)
+    ? Math.round((result?.relative_uncertainty ?? 0) * 100)
+    : 0;
+  const detailMm = isFinite(result?.finest_detail_m as number)
+    ? ((result?.finest_detail_m ?? 0) * 1000).toFixed(0)
+    : '—';
+
   return (
-    <Screen>
-      <Pressable onPress={() => router.back()} hitSlop={12}>
-        <Text style={[type.small, { color: color.accent }]}>‹ Back</Text>
-      </Pressable>
-      <Title label="Result" title={name} />
-      {missing ? <Banner tone="warn" text="This scan has no fit yet. It appears once its swipes are uploaded and fitted." /> : null}
-      {result ? (
-        <>
-          <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
-            {isSample ? <Chip text="Sample data · not a measurement" tone="warn" /> : null}
-            <Chip text={`Uncertainty ±${Math.round(result.relative_uncertainty * 100)}%`} tone={result.relative_uncertainty <= 0.15 ? 'good' : 'warn'} />
-            <Chip text={`${result.swipes} swipes`} tone="info" />
-          </View>
-          <Suspense fallback={<Banner tone="info" text="Loading the 3D view…" />}>
+    <ErrorBoundary>
+      <Screen>
+        <Pressable onPress={() => router.back()} hitSlop={12}>
+          <Text style={[type.small, { color: color.accent }]}>‹ Back</Text>
+        </Pressable>
+        <Title label="Result" title={name} />
+
+        {/* Offline & Pending Upload Safety Fallback */}
+        {missing ? (
+          <Card style={{ marginVertical: space.md, gap: space.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
+              <Text style={{ fontSize: 20 }}>📡</Text>
+              <Text style={[type.title, { fontSize: 16 }]}>Awaiting 3D Field Inversion</Text>
+            </View>
+
+            <Text style={[type.body, { color: color.textDim }]}>
+              {syncStatus === 'syncing'
+                ? 'Uploading scan swipes and computing regularized inverse solution...'
+                : syncStatus === 'offline'
+                  ? 'Your phone is currently offline. All raw sensor swipes are safely saved in local storage and will automatically solve once reconnected.'
+                  : syncStatus === 'no_server'
+                    ? 'No backend service URL configured. Configure your server in Settings to solve this scan.'
+                    : syncStatus === 'busy'
+                      ? 'The backend server worker is currently processing another job. It will retry automatically in a moment.'
+                      : 'The 3D field has not been computed yet for this scan.'}
+            </Text>
+
+            {pending > 0 ? (
+              <Chip text={`${pending} swipe${pending > 1 ? 's' : ''} queued for upload`} tone="warn" />
+            ) : null}
+
+            <View style={{ flexDirection: 'row', gap: space.sm, marginTop: space.xs }}>
+              <Button
+                title={syncStatus === 'syncing' ? 'Syncing…' : 'Sync & Solve Now'}
+                disabled={syncStatus === 'syncing'}
+                style={{ flex: 1 }}
+                onPress={() => {
+                  kick();
+                  void loadData();
+                }}
+              />
+              <Button
+                title="Server URL"
+                kind="secondary"
+                onPress={() => router.push('/connection')}
+              />
+            </View>
+          </Card>
+        ) : null}
+
+        {result ? (
+          <>
+            <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
+              {isSample ? <Chip text="Sample data · not a measurement" tone="warn" /> : null}
+              <Chip
+                text={`Uncertainty ±${uncPercent}%`}
+                tone={(result.relative_uncertainty ?? 1) <= 0.15 ? 'good' : 'warn'}
+              />
+              <Chip text={`${result.swipes ?? 0} swipes`} tone="info" />
+            </View>
+
             <FieldView3D ref={view} result={result} />
-          </Suspense>
-          <Legend />
-          <View style={{ flexDirection: 'row', gap: space.sm }}>
-            <Stat label="Strength" value={moment.toFixed(2)} unit="A·m²" note={`± ${momentSigma.toFixed(2)}`} />
-            <Stat label="Finest detail" value={(result.finest_detail_m * 1000).toFixed(0)} unit="mm" note="at this scan height" />
-          </View>
-          <Text style={[type.small, { lineHeight: 18 }]}>{result.label}</Text>
-          {result.warnings.map((w) => (
-            <Banner key={w} tone="warn" text={WARNINGS[w] ?? w} />
-          ))}
-          <Button title="Export…" kind="secondary" onPress={() => setExporting(true)} />
-          <ExportSheet
-            visible={exporting}
-            onClose={() => setExporting(false)}
-            scanId={isSample ? '' : id}
-            name={name}
-            hasResult={!isSample}
-            onImage={() => view.current?.snapshot() ?? Promise.resolve(null)}
-          />
-        </>
-      ) : null}
-    </Screen>
+
+            <Legend />
+            <View style={{ flexDirection: 'row', gap: space.sm }}>
+              <Stat label="Strength" value={moment.toFixed(2)} unit="A·m²" note={`± ${momentSigma.toFixed(2)}`} />
+              <Stat label="Finest detail" value={detailMm} unit="mm" note="at this scan height" />
+            </View>
+            <Text style={[type.small, { lineHeight: 18 }]}>{result.label ?? ''}</Text>
+            {(result.warnings ?? []).map((w) => (
+              <Banner key={w} tone="warn" text={WARNINGS[w] ?? w} />
+            ))}
+            <Button title="Export…" kind="secondary" onPress={() => setExporting(true)} />
+            <ExportSheet
+              visible={exporting}
+              onClose={() => setExporting(false)}
+              scanId={isSample ? '' : id}
+              name={name}
+              hasResult={!isSample}
+              onImage={() => view.current?.snapshot() ?? Promise.resolve(null)}
+            />
+          </>
+        ) : null}
+      </Screen>
+    </ErrorBoundary>
   );
+}
+
+function useMemoScan(id: string) {
+  const [scan, setScan] = useState(() => getScan(id));
+  useEffect(() => {
+    setScan(getScan(id));
+  }, [id]);
+  return scan;
 }
 
 function Legend() {

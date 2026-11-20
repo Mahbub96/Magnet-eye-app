@@ -1,4 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <!-- Android 12+ caps sensors at 200 Hz without this; it is a normal (install-time) permission. -->
   <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+  
+  <!-- ARCore camera tracking (Phase 6) -->
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+
+  <application>
+    <!-- Mark ARCore as optional so the app installs on devices without ARCore support -->
+    <meta-data android:name="com.google.ar.core" android:value="optional" />
+  </application>
 </manifest>
+

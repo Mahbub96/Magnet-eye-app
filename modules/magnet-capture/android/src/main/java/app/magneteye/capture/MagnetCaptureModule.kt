@@ -7,20 +7,33 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.opengl.EGL14
+import android.opengl.EGLConfig
+import android.opengl.EGLContext
+import android.opengl.EGLDisplay
+import android.opengl.EGLSurface
+import android.opengl.GLES20
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
+import com.google.ar.core.ArCoreApk
+import com.google.ar.core.Config
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.Pose
+import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 /**
- * Sensor capture for Magnet Eye (Architecture 3.3, SRS 4.4).
+ * Sensor capture for Magnet Eye (Architecture 3.3, SRS 4.4, Phase 6 ARCore).
  *
- * Every reading keeps its hardware timestamp (SensorEvent.timestamp, the elapsedRealtimeNanos
- * clock), stored relative to [originNs] so values stay exact as JS doubles. Readings are
- * buffered here and handed to JS in one call when a recording stops; only a throttled live
+ * Every reading keeps its hardware timestamp (SensorEvent.timestamp or Frame.timestamp,
+ * the elapsedRealtimeNanos clock), stored relative to [originNs] so values stay exact as JS doubles.
+ * Readings are buffered here and handed to JS in one call when a recording stops; only a throttled live
  * sample crosses the bridge while streaming.
  */
 class MagnetCaptureModule : Module() {
@@ -37,6 +50,18 @@ class MagnetCaptureModule : Module() {
   private val rot = Rows(5) // t, qw qx qy qz (game rotation vector, phone -> world)
   private val acc = Rows(4) // t, x y z (m/s²)
   private val gyr = Rows(4) // t, x y z (rad/s)
+
+  // ARCore tracking (Phase 6):
+  // arcorePos: t, px, py, pz, stateCode (1=tracking, 2=limited, 3=lost), confidence (0..1)
+  private val arcorePos = Rows(6)
+  // arcoreRot: t, qw, qx, qy, qz (camera pose quaternion)
+  private val arcoreRot = Rows(5)
+  private var arSession: Session? = null
+  private var arcoreRunning = false
+  private var arcoreThread: HandlerThread? = null
+  private var detectedTableZ: Double? = null
+  private var lastArcoreTracking = false
+  private var lastArcorePlane = false
 
   // Live view state.
   private val lastMag = DoubleArray(3)
@@ -65,14 +90,21 @@ class MagnetCaptureModule : Module() {
 
     Function("getCapabilities") { capabilities() }
 
+    Function("getArcoreStatus") { checkArcoreAvailability() }
+
     Function("startStreaming") { startStreaming() }
 
     Function("stopStreaming") { stopStreaming() }
+
+    Function("startArcore") { startArcoreTracking() }
+
+    Function("stopArcore") { stopArcoreTracking() }
 
     Function("startRecording") {
       if (!streaming) startStreaming()
       synchronized(lock) {
         mag.clear(); rot.clear(); acc.clear(); gyr.clear()
+        arcorePos.clear(); arcoreRot.clear()
         recordStartNs = SystemClock.elapsedRealtimeNanos() - originNs
         recording = true
       }
@@ -89,16 +121,183 @@ class MagnetCaptureModule : Module() {
           "rot" to rot.toArray(),
           "acc" to acc.toArray(),
           "gyr" to gyr.toArray(),
-          "overflow" to (mag.overflow || rot.overflow || acc.overflow || gyr.overflow),
+          "arcorePos" to arcorePos.toArray(),
+          "arcoreRot" to arcoreRot.toArray(),
+          "tableZ" to (detectedTableZ ?: 0.0),
+          "overflow" to (mag.overflow || rot.overflow || acc.overflow || gyr.overflow || arcorePos.overflow || arcoreRot.overflow),
         )
         mag.clear(); rot.clear(); acc.clear(); gyr.clear()
+        arcorePos.clear(); arcoreRot.clear()
         out
       }
     }
 
     Function("isRecording") { synchronized(lock) { recording } }
 
-    OnDestroy { stopStreaming() }
+    OnDestroy {
+      stopStreaming()
+      stopArcoreTracking()
+    }
+  }
+
+  private fun checkArcoreAvailability(): String {
+    val ctx = appContext.reactContext ?: return "unsupported"
+    return try {
+      when (ArCoreApk.getInstance().checkAvailability(ctx)) {
+        ArCoreApk.Availability.SUPPORTED_INSTALLED -> "ready"
+        ArCoreApk.Availability.SUPPORTED_NOT_INSTALLED,
+        ArCoreApk.Availability.SUPPORTED_APK_TOO_OLD -> "needs_install"
+        ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE -> "unsupported"
+        else -> "unknown"
+      }
+    } catch (e: Exception) {
+      "unsupported"
+    }
+  }
+
+  private fun startArcoreTracking() {
+    synchronized(lock) {
+      if (arcoreRunning) return
+      val act = appContext.currentActivity ?: throw CodedException("ERR_NO_ACTIVITY", "Activity is not available", null)
+      val ctx = appContext.reactContext ?: throw CodedException("ERR_NO_CONTEXT", "React context is not available", null)
+      if (ctx.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+        throw CodedException("ERR_CAMERA_PERMISSION", "Camera permission is required for ARCore tracking", null)
+      }
+
+      val session = try {
+        Session(act).apply {
+          val cfg = Config(this).apply {
+            planeFindingMode = Config.PlaneFindingMode.HORIZONTAL
+            updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+            focusMode = Config.FocusMode.FIXED
+            lightEstimationMode = Config.LightEstimationMode.DISABLED
+          }
+          configure(cfg)
+        }
+      } catch (e: Exception) {
+        throw CodedException("ERR_ARCORE_INIT", "Failed to initialize ARCore session: ${e.message}", e)
+      }
+      arSession = session
+
+      val t = HandlerThread("magnet-arcore").also { it.start() }
+      arcoreThread = t
+      val handler = Handler(t.looper)
+      arcoreRunning = true
+      detectedTableZ = null
+
+      handler.post {
+        runArcoreLoop(session)
+      }
+    }
+  }
+
+  private fun stopArcoreTracking() {
+    synchronized(lock) {
+      if (!arcoreRunning && arSession == null) return
+      arcoreRunning = false
+      arcoreThread?.quitSafely()
+      arcoreThread = null
+      arSession = null
+      lastArcoreTracking = false
+      lastArcorePlane = false
+    }
+  }
+
+  private fun runArcoreLoop(session: Session) {
+    val dpy = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
+    EGL14.eglInitialize(dpy, null, 0, null, 0)
+    val attribs = intArrayOf(
+      EGL14.EGL_RED_SIZE, 8,
+      EGL14.EGL_GREEN_SIZE, 8,
+      EGL14.EGL_BLUE_SIZE, 8,
+      EGL14.EGL_RENDERABLE_TYPE, EGL14.EGL_OPENGL_ES2_BIT,
+      EGL14.EGL_NONE
+    )
+    val configs = arrayOfNulls<EGLConfig>(1)
+    val numConfigs = IntArray(1)
+    EGL14.eglChooseConfig(dpy, attribs, 0, configs, 0, 1, numConfigs, 0)
+    val ctxAttribs = intArrayOf(EGL14.EGL_CONTEXT_CLIENT_VERSION, 2, EGL14.EGL_NONE)
+    val eglCtx = EGL14.eglCreateContext(dpy, configs[0], EGL14.EGL_NO_CONTEXT, ctxAttribs, 0)
+    val pbufAttribs = intArrayOf(EGL14.EGL_WIDTH, 1, EGL14.EGL_HEIGHT, 1, EGL14.EGL_NONE)
+    val eglSurf = EGL14.eglCreatePbufferSurface(dpy, configs[0], pbufAttribs, 0)
+    EGL14.eglMakeCurrent(dpy, eglSurf, eglSurf, eglCtx)
+
+    val texIds = IntArray(1)
+    GLES20.glGenTextures(1, texIds, 0)
+    session.setCameraTextureNames(texIds)
+
+    try {
+      session.resume()
+    } catch (e: Exception) {
+      synchronized(lock) { arcoreRunning = false }
+      return
+    }
+
+    while (arcoreRunning) {
+      try {
+        val frame = session.update()
+        val camera = frame.camera
+        val t = frame.timestamp - originNs
+        val state = camera.trackingState
+        val isTracking = state == TrackingState.TRACKING
+        val pose = camera.displayOrientedPose
+        val q = pose.rotationQuaternion // FloatArray [qx, qy, qz, qw]
+        val qw = q[3].toDouble()
+        val qx = q[0].toDouble()
+        val qy = q[1].toDouble()
+        val qz = q[2].toDouble()
+        val tx = pose.tx().toDouble()
+        val ty = pose.ty().toDouble()
+        val tz = pose.tz().toDouble()
+        val stateCode = when (state) {
+          TrackingState.TRACKING -> 1.0
+          TrackingState.PAUSED -> 2.0
+          TrackingState.STOPPED -> 3.0
+        }
+        val conf = if (isTracking) 1.0 else 0.0
+
+        // Horizontal plane detection for table z
+        val planes = session.getAllTrackables(Plane::class.java)
+        var hasPlane = false
+        for (p in planes) {
+          if (p.type == Plane.Type.HORIZONTAL_UPWARD_FACING && p.trackingState == TrackingState.TRACKING) {
+            hasPlane = true
+            val pz = p.centerPose.tz().toDouble()
+            synchronized(lock) {
+              if (detectedTableZ == null || pz < detectedTableZ!!) {
+                detectedTableZ = pz
+              }
+            }
+          }
+        }
+
+        synchronized(lock) {
+          lastArcoreTracking = isTracking
+          lastArcorePlane = hasPlane
+          if (recording) {
+            arcorePos.add(t, tx, ty, tz, stateCode, conf)
+            arcoreRot.add(t, qw, qx, qy, qz)
+          }
+        }
+      } catch (e: Exception) {
+        // Ignored or camera busy
+      }
+      try {
+        Thread.sleep(16) // ~60 Hz
+      } catch (e: InterruptedException) {
+        break
+      }
+    }
+
+    try {
+      session.pause()
+      session.close()
+    } catch (e: Exception) {}
+
+    EGL14.eglMakeCurrent(dpy, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
+    EGL14.eglDestroySurface(dpy, eglSurf)
+    EGL14.eglDestroyContext(dpy, eglCtx)
+    EGL14.eglTerminate(dpy)
   }
 
   private fun capabilities(): Map<String, Any?> {
@@ -128,6 +327,7 @@ class MagnetCaptureModule : Module() {
     return mapOf(
       "sensors" to sensors,
       "highSamplingRateGranted" to highRate,
+      "arcoreStatus" to checkArcoreAvailability(),
       "manufacturer" to Build.MANUFACTURER,
       "model" to Build.MODEL,
       "sdkInt" to Build.VERSION.SDK_INT,
@@ -218,6 +418,9 @@ class MagnetCaptureModule : Module() {
         "rateHz" to rate,
         "recording" to recording,
         "recordedSamples" to mag.size,
+        "arcoreTracking" to lastArcoreTracking,
+        "arcorePlane" to lastArcorePlane,
+        "tableZ" to (detectedTableZ ?: 0.0),
       )
     }
     sendEvent("onSample", payload)

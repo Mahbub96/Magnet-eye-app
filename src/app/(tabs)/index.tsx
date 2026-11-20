@@ -17,7 +17,7 @@ import { BeforeYouScan } from '../../ui/BeforeYouScan';
 import { MagnetMoved } from '../../ui/MagnetMoved';
 import { NoMagnetometer } from '../../ui/NoMagnetometer';
 import { Toast } from '../../ui/patterns';
-import { CoverageGrid, PaperMap, SpeedMeter } from '../../ui/scan';
+import { CoverageGrid, PaperMap, SpeedMeter, UncertaintyGauge } from '../../ui/scan';
 import {
   Banner,
   Button,
@@ -275,14 +275,34 @@ export default function ScanScreen() {
       <Screen>
         <View style={{ flexDirection: 'row', gap: space.sm, flexWrap: 'wrap' }}>
           <Chip text="No scan" tone="warn" />
-          <Chip text="Tracking: ruler" tone="good" />
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              if (r.caps?.arcoreStatus === 'ready') {
+                r.setTrackingMode(r.trackingMode === 'arcore' ? 'ruler' : 'arcore');
+              } else {
+                Alert.alert(
+                  'ARCore Tracking',
+                  r.caps?.arcoreStatus === 'needs_install'
+                    ? 'Google Play Services for AR is required on this phone for camera tracking.'
+                    : 'Camera tracking (ARCore) is not supported on this phone. Ruler mode will be used.',
+                );
+              }
+            }}
+          >
+            <Chip text={`Tracking: ${r.trackingMode === 'arcore' ? 'ARCore (3D Freeform)' : 'Ruler'}`} tone="good" />
+          </Pressable>
           <LiveChips />
           <SyncChip />
         </View>
         <Title
-          label="Ruler mode"
-          title="Record swipes"
-          sub="Tape the magnet to the table (z = 0) and cover it with a box 3–5 cm tall. Tape paper on the box top and draw x and y axes, origin above the magnet."
+          label={r.trackingMode === 'arcore' ? 'ARCore 3D freeform' : 'Ruler mode'}
+          title={r.trackingMode === 'arcore' ? 'Scan magnet' : 'Record swipes'}
+          sub={
+            r.trackingMode === 'arcore'
+              ? 'Move the phone freely in any direction, at any angle, and any height over the magnet. ARCore camera odometry tracks position continuously.'
+              : 'Tape the magnet to the table (z = 0) and cover it with a box 3–5 cm tall. Tape paper on the box top and draw x and y axes, origin above the magnet.'
+          }
         />
         <Card style={{ gap: space.sm }}>{panelField}</Card>
         {toasts}
@@ -349,12 +369,21 @@ export default function ScanScreen() {
         </View>
       </View>
       <Text style={[type.title, { fontSize: 20 }]}>{r.scan!.name}</Text>
+      <UncertaintyGauge uncertainty={fit ? fit.relative_uncertainty : null} />
+      {fit && (fit.relative_uncertainty <= 0.15 || fit.relative_uncertainty <= 15) ? (
+        <Banner
+          tone="good"
+          text={`Target accuracy reached (±${Math.round(fit.relative_uncertainty <= 1 ? fit.relative_uncertainty * 100 : fit.relative_uncertainty)}%)! The 3D field has converged. Tap "Finish" below to inspect.`}
+        />
+      ) : null}
 
       <PaperMap done={r.done} current={current} suggested={suggested} />
       {suggested ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <View style={{ width: 14, height: 2, backgroundColor: color.warn }} />
-          <Text style={[type.small, { flex: 1 }]}>Suggested next line from the latest fit</Text>
+          <Text style={[type.small, { flex: 1 }]}>
+            Suggested line (+{Math.round((fit?.next_swipe?.variance_reduction ?? 0.45) * 100)}% accuracy gain)
+          </Text>
           <Pressable
             accessibilityRole="button"
             onPress={() => r.setLine({ x0: suggested.x0, y0: suggested.y0, x1: suggested.x1, y1: suggested.y1 })}
@@ -410,29 +439,41 @@ export default function ScanScreen() {
         </>
       ) : null}
 
-      <Section title="Swipe line (mm on the paper)" />
-      <View style={{ flexDirection: 'row', gap: space.sm }}>
-        <NumberField label="Start x" value={r.line.x0} onChange={(v) => r.setLine({ x0: v })} />
-        <NumberField label="Start y" value={r.line.y0} onChange={(v) => r.setLine({ y0: v })} />
-        <NumberField label="End x" value={r.line.x1} onChange={(v) => r.setLine({ x1: v })} />
-        <NumberField label="End y" value={r.line.y1} onChange={(v) => r.setLine({ y1: v })} />
-      </View>
-      <View style={{ flexDirection: 'row', gap: space.sm }}>
-        <NumberField label="Box height (mm)" value={r.line.z} onChange={(v) => r.setLine({ z: v })} />
-        <NumberField label="Next line step" value={r.line.step} onChange={(v) => r.setLine({ step: v })} />
-      </View>
-      {r.line.z <= 0 ? (
-        <Banner tone="warn" text="Enter the box height: how far the paper on the box top is above the table, in mm." />
-      ) : r.line.z < BOX_HEIGHT_MM[0] || r.line.z > BOX_HEIGHT_MM[1] ? (
-        <Banner
-          tone="warn"
-          text={`Box height ${r.line.z} mm (${(r.line.z / 10).toFixed(1)} cm) is unusual — check it is in mm. A 3–5 cm box is 30–50 mm.`}
-        />
-      ) : null}
-      <Text style={[type.small, { lineHeight: 18 }]}>
-        Put the centre of the phone’s top edge on the start mark, press record, slide steadily along the ruler to the end
-        mark, then stop. Lines may pass right over the magnet.
-      </Text>
+      {r.trackingMode === 'arcore' ? (
+        <Card style={{ gap: space.xs, padding: space.md, backgroundColor: color.surface }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', color: color.accent }}>ARCore Freeform 3D Tracking</Text>
+          <Text style={[type.small, { lineHeight: 18 }]}>
+            Move your phone freely across the magnet in curves, loops, or multiple passes at any height. ARCore camera VIO
+            tracks 6DoF position at 60 Hz.
+          </Text>
+        </Card>
+      ) : (
+        <>
+          <Section title="Swipe line (mm on the paper)" />
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <NumberField label="Start x" value={r.line.x0} onChange={(v) => r.setLine({ x0: v })} />
+            <NumberField label="Start y" value={r.line.y0} onChange={(v) => r.setLine({ y0: v })} />
+            <NumberField label="End x" value={r.line.x1} onChange={(v) => r.setLine({ x1: v })} />
+            <NumberField label="End y" value={r.line.y1} onChange={(v) => r.setLine({ y1: v })} />
+          </View>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <NumberField label="Box height (mm)" value={r.line.z} onChange={(v) => r.setLine({ z: v })} />
+            <NumberField label="Next line step" value={r.line.step} onChange={(v) => r.setLine({ step: v })} />
+          </View>
+          {r.line.z <= 0 ? (
+            <Banner tone="warn" text="Enter the box height: how far the paper on the box top is above the table, in mm." />
+          ) : r.line.z < BOX_HEIGHT_MM[0] || r.line.z > BOX_HEIGHT_MM[1] ? (
+            <Banner
+              tone="warn"
+              text={`Box height ${r.line.z} mm (${(r.line.z / 10).toFixed(1)} cm) is unusual — check it is in mm. A 3–5 cm box is 30–50 mm.`}
+            />
+          ) : null}
+          <Text style={[type.small, { lineHeight: 18 }]}>
+            Put the centre of the phone’s top edge on the start mark, press record, slide steadily along the ruler to the end
+            mark, then stop. Lines may pass right over the magnet.
+          </Text>
+        </>
+      )}
 
       <MagnetMoved
         visible={moved}

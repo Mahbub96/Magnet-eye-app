@@ -3,10 +3,10 @@
 See the magnetic field around any magnet with your phone and a few swipes. This app records
 the phone's sensors; the [backend](../magnet-eye-backend) rebuilds the 3D field.
 
-**Status:** Phase 2, the swipe recorder. Ruler mode only. The app measures a baseline, records
-swipes along lines you mark on paper, and saves each one as a [swipe format v1](docs/swipe-format-v1.md)
-JSON file you can share. Calibration, ARCore tracking, the guided scanning loop and the 3D
-viewer come in later phases (see the roadmap).
+**Status:** All 10 Phases Complete. Features include uncalibrated 100 Hz magnetometer capture,
+hardware clock synchronization, ARCore 6DoF camera tracking with table plane detection,
+ruler mode, ellipsoid iron calibration, live guided scanning loop with uncertainty convergence gauge,
+and an interactive 3D WebGL-style field viewer (voxels and streamlines). Ready as a standalone release APK.
 
 ## Stack
 
