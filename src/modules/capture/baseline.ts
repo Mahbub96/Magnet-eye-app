@@ -1,6 +1,7 @@
 import type { RawRecording } from '../../../modules/magnet-capture/src/MagnetCapture.types';
 import type { Quat, Vec3 } from '../../utils/quaternion';
 import { aboutZ, headingOfTop, mean as meanQuat, multiply } from '../../utils/quaternion';
+import { tiltRad } from './quality';
 import { meanVec, rateHz, rows, stdVec, toWorld } from './stats';
 
 export type BaselineResult = {
@@ -16,6 +17,8 @@ export type BaselineResult = {
   samples: number;
   /** Largest angle the phone turned during the measurement; it should be still. */
   maxTiltChangeRad: number;
+  /** Mean tilt from flat (screen up), radians; ruler mode needs it near 0. */
+  tiltRad: number;
 };
 
 /** Baseline from a short recording with the phone still, flat, top along paper +y, and the
@@ -30,7 +33,8 @@ export function measureBaseline(
   if (mag.length < 10 || rot.length < 5) throw new Error('Too few readings for a baseline');
   const bias = fixed?.androidBias ?? meanVec(mag.map((r) => [r[4], r[5], r[6]] as Vec3));
   const qs = rot.map((r) => [r[1], r[2], r[3], r[4]] as Quat);
-  const align = fixed?.yawAlignment ?? -headingOfTop(meanQuat(qs));
+  const qMean = meanQuat(qs);
+  const align = fixed?.yawAlignment ?? -headingOfTop(qMean);
   const a = aboutZ(align);
   const aligned = qs.map((q) => multiply(a, q));
   const world = toWorld(
@@ -54,5 +58,6 @@ export function measureBaseline(
     rateHz: rateHz(mag.map((r) => r[0])),
     samples: mag.length,
     maxTiltChangeRad: maxTilt,
+    tiltRad: tiltRad(qMean),
   };
 }

@@ -1,7 +1,8 @@
 import type { RawRecording } from '../../../modules/magnet-capture/src/MagnetCapture.types';
 import type { Quat, Vec3 } from '../../utils/quaternion';
 import { aboutZ, multiply, normalize } from '../../utils/quaternion';
-import { median, rateHz, rows } from './stats';
+import { maxTiltRad } from './quality';
+import { median, rateHz, rows, toWorld } from './stats';
 import {
   API_VERSION,
   CALIBRATION_SCHEMA_VERSION,
@@ -59,10 +60,12 @@ export type SessionContext = {
   recordedAt?: Date;
 };
 
-/** Start and end of the movement inside a recording, from the accelerometer.
+/** Start and end of the movement inside a recording, from the accelerometer rows
+ * [t_ns, x, y, z] in m/s², already rotated into the world frame (buildSwipe does this, so a
+ * phone that tilts does not look like a phone that slides: gravity stays on world z).
  * The phone rests on the start mark when recording begins and on the end mark when it stops.
- * Sliding a flat phone changes the horizontal components, not |a|, so this looks at how far the
- * acceleration vector moves from its median. The first and last 150 ms are skipped (the tap on
+ * Sliding changes the horizontal components, not |a|, so this looks at how far the
+ * acceleration vector moves from its median (the median holds gravity). The first and last 150 ms are skipped (the tap on
  * the record button shakes the phone). The threshold comes from the quietest part of the
  * recording itself, with a small floor. */
 export function detectMotion(acc: number[][]): { start: number; end: number } | null {
@@ -119,19 +122,31 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
 
   const acc = rows(raw.acc, 4);
   const gyr = rows(raw.gyr, 4);
+  // Motion detection works in the world frame; the stored accel stream stays in the phone frame.
+  const rotT = orientation.map((r) => r[0]);
+  const rotQ = orientation.map((r) => [r[1], r[2], r[3], r[4]] as Quat);
+  const accWorld = toWorld(
+    acc.map((r) => r[0]),
+    acc.map((r) => [r[1], r[2], r[3]] as Vec3),
+    rotT,
+    rotQ,
+  ).map((v, i) => [acc[i][0], ...v]);
+  const tilt = maxTiltRad(rotQ);
   const tFirst = mag.length ? mag[0][0] : raw.startNs;
   const tLast = mag.length ? mag[mag.length - 1][0] : raw.stopNs;
 
   const position: PositionRow[] = [];
   let meanSpeed: number | null = null;
+  let motionFound = false;
   if (ctx.plannedLine && (ctx.trackingMode === 'ruler' || ctx.trackingMode === 'grid')) {
     const { start, end } = ctx.plannedLine;
     const state = ctx.trackingMode === 'ruler' ? 'ruler_endpoint' : 'grid_mark';
-    const motion = detectMotion(acc);
+    const motion = accWorld.length ? detectMotion(accWorld) : null;
     const at = (t: number, p: Vec3): PositionRow => [t, p[0], p[1], p[2], state, 1];
     position.push(at(tFirst, start));
     if (motion && motion.start > tFirst && motion.end < tLast) {
       position.push(at(motion.start, start), at(motion.end, end));
+      motionFound = true;
     }
     position.push(at(tLast, end));
     const len = Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2]);
@@ -182,6 +197,8 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
       saturated_samples: mag.reduce((s, r) => s + r[7], 0),
       mean_speed_m_s: meanSpeed,
       buffer_overflow: raw.overflow,
+      max_tilt_rad: tilt,
+      motion_detected: motionFound,
     },
   };
 }

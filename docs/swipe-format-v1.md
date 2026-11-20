@@ -86,7 +86,12 @@ rows (constant speed), which is why ruler mode's `position_jitter_m` is larger.
 ## stats
 
 Informational only: `duration_s`, `mag_rate_hz`, `orientation_rate_hz`, `mag_samples`,
-`saturated_samples`, `mean_speed_m_s`, `buffer_overflow`.
+`saturated_samples`, `mean_speed_m_s`, `buffer_overflow`, `max_tilt_rad` (largest tilt from
+flat during the swipe; ruler mode expects under 10° = 0.175 rad) and `motion_detected` (ruler
+and grid: the accelerometer found the slide, so rows 2 and 3 of `position` exist).
+
+Motion is detected on the accelerometer rotated into the world frame, so tilting the phone is
+not mistaken for sliding it.
 
 ## Loading in Python
 

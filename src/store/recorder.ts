@@ -16,6 +16,7 @@ import {
 } from '../db/scans';
 import { measureBaseline } from '../modules/capture/baseline';
 import { buildSwipe, validateSwipe } from '../modules/capture/buildSwipe';
+import { baselineProblem, swipeProblems } from '../modules/capture/quality';
 import type { Vec3 } from '../utils/quaternion';
 
 /** Stay under this share of the sensor range (Phase 1 pass bar, SAFE_FRACTION). */
@@ -39,7 +40,9 @@ export type ActiveScan = {
   baselineRateHz: number;
 };
 
-export type LastSwipe = SwipeRow & { problems: string[] };
+/** problems: format fields missing (should never happen). warnings: the swipe was recorded
+ * in a way that makes its positions untrustworthy (phone tilted, no slide found): redo it. */
+export type LastSwipe = SwipeRow & { problems: string[]; warnings: string[] };
 
 type State = {
   caps: Capabilities | null;
@@ -115,6 +118,8 @@ export const useRecorder = create<State>((set, get) => ({
     try {
       const b = measureBaseline(raw);
       if (b.maxTiltChangeRad > 0.05) throw new Error('The phone moved. Keep it still and try again.');
+      const why = baselineProblem(b);
+      if (why) throw new Error(why);
       const scan: ActiveScan = {
         id: newId(),
         name: name.trim() || `Scan ${new Date().toLocaleString()}`,
@@ -186,12 +191,16 @@ export const useRecorder = create<State>((set, get) => ({
         },
       });
       const problems = validateSwipe(swipe);
+      const warnings = swipeProblems({
+        maxTiltRad: swipe.stats.max_tilt_rad,
+        motionFound: swipe.stats.motion_detected,
+      });
       const row = await saveSwipe(swipe);
       const along = Math.abs(line.x1 - line.x0) >= Math.abs(line.y1 - line.y0);
       set({
         phase: 'ready',
         swipeCount: swipeCount + 1,
-        last: { ...row, problems },
+        last: { ...row, problems, warnings },
         // Next parallel line, one step over.
         line: along
           ? { ...line, y0: line.y0 + line.step, y1: line.y1 + line.step }
@@ -225,16 +234,26 @@ export const useRecorder = create<State>((set, get) => ({
     await sleep(BASELINE_MS);
     const raw = MagnetCapture.stopRecording();
     let end: Vec3 | null = null;
+    let note: string | null = null;
     try {
-      end = measureBaseline(raw, {
+      const b = measureBaseline(raw, {
         yawAlignment: scan.yawAlignment,
         androidBias: scan.androidBias,
-      }).fieldWorld;
-    } catch {
-      end = null;
+      });
+      // A bad end baseline is dropped rather than stored; the start baseline still stands.
+      note = baselineProblem(b);
+      end = note ? null : b.fieldWorld;
+    } catch (e) {
+      note = (e as Error).message;
     }
     await finishScanRow(scan.id, end);
-    set({ phase: 'idle', scan: null, swipeCount: 0, last: null, message: 'Scan saved' });
+    set({
+      phase: 'idle',
+      scan: null,
+      swipeCount: 0,
+      last: null,
+      message: note ? `Scan saved without an end baseline. ${note}` : 'Scan saved',
+    });
   },
 
   cancelScan: () => {

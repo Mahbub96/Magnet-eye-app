@@ -2,6 +2,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
+import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
 import {
   Banner,
@@ -99,6 +100,8 @@ export default function ScanScreen() {
     : 0;
   const peakAxis = live ? Math.max(...live.mag.map(Math.abs)) : 0;
   const nearLimit = range > 0 && peakAxis > limit;
+  const tilt = live ? tiltRad(live.quat) : 0;
+  const notFlat = live !== null && tilt > FLAT_MAX_RAD;
   const elapsed = useElapsed(r.phase === 'recording');
   const busy = r.phase === 'baseline' || r.phase === 'saving' || r.phase === 'endBaseline';
   const inScan = r.scan !== null;
@@ -127,6 +130,7 @@ export default function ScanScreen() {
         <Chip text={inScan ? `Swipe ${r.swipeCount + 1}` : 'No scan'} tone={inScan ? 'info' : 'warn'} />
         <Chip text="Tracking: ruler" tone="good" />
         <Chip text={`${(live?.rateHz ?? 0).toFixed(0)} Hz`} tone={(live?.rateHz ?? 0) > 50 ? 'good' : 'warn'} />
+        <Chip text={`Tilt ${deg(tilt).toFixed(0)}°`} tone={notFlat ? 'warn' : 'good'} />
       </View>
 
       <Title
@@ -154,10 +158,24 @@ export default function ScanScreen() {
       </Card>
 
       {nearLimit ? <Banner tone="warn" text="Near the sensor limit — lift the phone or move away from the magnet." /> : null}
+      {notFlat ? (
+        <Banner tone="warn" text={`Phone tilted ${deg(tilt).toFixed(0)}° — lay it flat on the paper, screen up.`} />
+      ) : null}
+      {!inScan && live && field > BACKGROUND_MAX_UT ? (
+        <Banner
+          tone="warn"
+          text={`Field is ${field.toFixed(0)} µT — the Earth alone is about 25–65 µT. Move the magnet away before the baseline.`}
+        />
+      ) : null}
       {capWarnings.map((w) => (
         <Banner key={w} tone="warn" text={w} />
       ))}
-      {r.message ? <Banner tone={r.phase === 'idle' && r.message === 'Scan saved' ? 'good' : 'info'} text={r.message} /> : null}
+      {r.message ? (
+        <Banner
+          tone={r.message === 'Scan saved' ? 'good' : r.phase === 'idle' ? 'warn' : 'info'}
+          text={r.message}
+        />
+      ) : null}
 
       {!inScan ? (
         <>
@@ -223,6 +241,9 @@ export default function ScanScreen() {
                   note={r.last.saturated_samples ? 'lift the phone' : 'none'}
                 />
               </View>
+              {r.last.warnings.map((w) => (
+                <Banner key={w} tone="warn" text={`${w} Tap Redo last.`} />
+              ))}
               {r.last.problems.length ? (
                 <Banner tone="bad" text={`Missing or invalid: ${r.last.problems.join(', ')}`} />
               ) : (

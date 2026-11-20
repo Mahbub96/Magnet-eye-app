@@ -106,5 +106,9 @@ export type SwipeV1 = {
     saturated_samples: number;
     mean_speed_m_s: number | null;
     buffer_overflow: boolean;
+    /** Largest tilt from flat during the swipe, radians (ruler mode wants < 10°). */
+    max_tilt_rad: number;
+    /** Ruler/grid: whether the accelerometer found the slide between the marks. */
+    motion_detected: boolean;
   };
 };

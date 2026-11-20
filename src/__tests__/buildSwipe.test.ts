@@ -5,6 +5,7 @@ import { expect, test } from "@jest/globals";
 import type { RawRecording } from '../../modules/magnet-capture/src/MagnetCapture.types';
 import { measureBaseline } from '../modules/capture/baseline';
 import { buildSwipe, detectMotion, type SessionContext, validateSwipe } from '../modules/capture/buildSwipe';
+import { baselineProblem, swipeProblems } from '../modules/capture/quality';
 import { MAG_COLUMNS } from '../modules/capture/swipeFormat';
 import { aboutZ, rotate, type Vec3 } from '../utils/quaternion';
 
@@ -142,4 +143,50 @@ test('example swipe fixture for the backend', () => {
   const s = buildSwipe(raw, ctx({ yawAlignment: -0.8, recordedAt: new Date('2026-11-20T12:00:00Z') }));
   expect(validateSwipe(s)).toEqual([]);
   if (process.env.WRITE_FIXTURE) writeFileSync(process.env.WRITE_FIXTURE, JSON.stringify(s, null, 1));
+});
+
+/** Phone held still but tipped from flat to `tiltDeg` about its x axis halfway through: the
+ * accelerometer sees gravity swing across its axes, which is not a slide. */
+function tipped(tiltDeg: number) {
+  const raw = synth({ yaw: 0, bWorld: earth, bias, moving: false });
+  const rot: number[] = [];
+  const acc: number[] = [];
+  for (let i = 0; i < 300; i++) {
+    const t = 5e9 + i * 1e7;
+    const a = i < 150 ? 0 : ((tiltDeg * Math.PI) / 180) * Math.min(1, (i - 150) / 30);
+    const q: [number, number, number, number] = [Math.cos(a / 2), Math.sin(a / 2), 0, 0];
+    rot.push(t + 2e6, ...q);
+    const gPhone = rotate([q[0], -q[1], -q[2], -q[3]], [0, 0, 9.81]);
+    acc.push(t + 1e6, ...gPhone);
+  }
+  return { ...raw, rot, acc };
+}
+
+test('tilting the phone is not mistaken for a slide, and the tilt is flagged', () => {
+  const s = buildSwipe(tipped(40), ctx());
+  expect(s.stats.motion_detected).toBe(false);
+  expect(s.streams.position.rows).toHaveLength(2);
+  expect(s.stats.max_tilt_rad).toBeCloseTo((40 * Math.PI) / 180, 3);
+  const w = swipeProblems({ maxTiltRad: s.stats.max_tilt_rad, motionFound: s.stats.motion_detected });
+  expect(w.join(' ')).toMatch(/tilted 40°/);
+  expect(w.join(' ')).toMatch(/No slide detected/);
+});
+
+test('a flat sliding swipe has no warnings', () => {
+  const s = buildSwipe(synth({ yaw: 0.8, bWorld: earth, bias }), ctx({ yawAlignment: -0.8 }));
+  expect(s.stats.motion_detected).toBe(true);
+  expect(s.stats.max_tilt_rad).toBeLessThan(1e-6);
+  expect(swipeProblems({ maxTiltRad: s.stats.max_tilt_rad, motionFound: true })).toEqual([]);
+});
+
+test('baseline is refused when the phone is not flat or the magnet is near', () => {
+  const flat = measureBaseline(synth({ yaw: 0.3, bWorld: earth, bias, moving: false }));
+  expect(flat.tiltRad).toBeLessThan(1e-6);
+  expect(baselineProblem(flat)).toBeNull();
+  // Held upright, like the first real scan (about 90° from flat).
+  expect(baselineProblem({ ...flat, tiltRad: Math.PI / 2 })).toMatch(/Lay the phone flat/);
+  // Magnet near: the first real scan's baseline read 277 µT.
+  const near = measureBaseline(synth({ yaw: 0, bWorld: [-196.7, 96.0, -169.8], bias, moving: false }));
+  expect(baselineProblem(near)).toMatch(/277 µT/);
+  expect(baselineProblem({ ...flat, fieldWorld: [5, 5, 5] })).toMatch(/only 9 µT/);
 });
