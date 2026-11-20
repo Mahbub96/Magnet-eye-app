@@ -147,7 +147,7 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
   let meanSpeed: number | null = null;
   let motionFound = false;
 
-  if (ctx.trackingMode === 'arcore' && raw.arcorePos && raw.arcorePos.length > 0) {
+  if (ctx.trackingMode === 'arcore' && raw.arcorePos && raw.arcorePos.length >= 12) {
     const stateMap: Record<number, 'tracking' | 'limited' | 'lost'> = {
       1: 'tracking',
       2: 'limited',
@@ -177,9 +177,12 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
       meanSpeed = durNs > 0 ? pathLen / (durNs / 1e9) : null;
       motionFound = pathLen > 0.02;
     }
-  } else if (ctx.plannedLine && (ctx.trackingMode === 'ruler' || ctx.trackingMode === 'grid')) {
+  }
+
+  // Fallback to planned line if ARCore produced no valid points or in Ruler/Grid mode
+  if (position.length < 2 && ctx.plannedLine) {
     const { start, end } = ctx.plannedLine;
-    const state = ctx.trackingMode === 'ruler' ? 'ruler_endpoint' : 'grid_mark';
+    const state = ctx.trackingMode === 'grid' ? 'grid_mark' : 'ruler_endpoint';
     const motion = accWorld.length ? detectMotion(accWorld) : null;
     const at = (t: number, p: Vec3): PositionRow => [t, p[0], p[1], p[2], state, 1];
     position.push(at(tFirst, start));
@@ -193,6 +196,10 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
     meanSpeed = moveNs > 0 ? len / (moveNs / 1e9) : null;
   }
 
+  const effectiveArcore = ctx.trackingMode === 'arcore' && raw.arcorePos && raw.arcorePos.length >= 12 && position.length >= 2;
+  const effectiveMode: TrackingMode = effectiveArcore ? 'arcore' : ctx.trackingMode === 'grid' ? 'grid' : 'ruler';
+  const referencePoint = effectiveArcore ? 'arcore_camera' : 'top_edge_centre_back';
+
   return {
     format: FORMAT_NAME,
     format_version: FORMAT_VERSION,
@@ -203,18 +210,20 @@ export function buildSwipe(raw: RawRecording, ctx: SessionContext): SwipeV1 {
     swipe_index: ctx.swipeIndex,
     recorded_at: (ctx.recordedAt ?? new Date()).toISOString(),
     device: ctx.device,
-    tracking_mode: ctx.trackingMode,
-    reference_point: ctx.trackingMode === 'arcore' ? 'arcore_camera' : 'top_edge_centre_back',
+    tracking_mode: effectiveMode,
+    reference_point: referencePoint,
     clock: { source: 'elapsedRealtimeNanos', origin_ns: ctx.clockOriginNs },
     calibration: { ...cal, sampling_rate_hz: rateHz(mag.map((r) => r[0])) },
     session_geometry: {
-      table_z_m: ctx.trackingMode === 'arcore' && raw.tableZ != null && raw.tableZ !== 0 ? raw.tableZ : ctx.tableZ,
+      table_z_m: effectiveMode === 'arcore' && raw.tableZ != null && raw.tableZ !== 0 ? raw.tableZ : ctx.tableZ,
       baseline_start_ut: ctx.baselineStart,
       baseline_end_ut: null,
       yaw_alignment_rad: ctx.yawAlignment,
     },
-    error_sizes: MODE_ERRORS[ctx.trackingMode],
-    planned_line: ctx.plannedLine
+    error_sizes: MODE_ERRORS[effectiveMode],
+    planned_line: effectiveArcore
+      ? null
+      : ctx.plannedLine
       ? { start_m: ctx.plannedLine.start, end_m: ctx.plannedLine.end }
       : null,
     streams: {

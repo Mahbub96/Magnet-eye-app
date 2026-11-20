@@ -11,6 +11,7 @@ import { canScan } from '../../modules/capture/deviceCheck';
 import type { PhoneProfile } from '../../modules/capture/profile';
 import { BACKGROUND_MAX_UT, BOX_HEIGHT_MM, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { recalibrationReason } from '../../modules/capture/recalibrate';
+import { requestCameraPermission } from '../../modules/capture/permissions';
 import { BASELINE_MS, rangeOf, SAFE_FRACTION, useLive, useRecorder } from '../../store/recorder';
 import { useSync } from '../../sync/useSync';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
@@ -277,16 +278,31 @@ export default function ScanScreen() {
           <Chip text="No scan" tone="warn" />
           <Pressable
             accessibilityRole="button"
-            onPress={() => {
-              if (r.caps?.arcoreStatus === 'ready') {
-                r.setTrackingMode(r.trackingMode === 'arcore' ? 'ruler' : 'arcore');
+            onPress={async () => {
+              if (r.trackingMode === 'arcore') {
+                r.setTrackingMode('ruler');
               } else {
-                Alert.alert(
-                  'ARCore Tracking',
-                  r.caps?.arcoreStatus === 'needs_install'
-                    ? 'Google Play Services for AR is required on this phone for camera tracking.'
-                    : 'Camera tracking (ARCore) is not supported on this phone. Ruler mode will be used.',
-                );
+                if (r.caps?.arcoreStatus === 'ready') {
+                  const hasCamera = await requestCameraPermission();
+                  if (hasCamera) {
+                    r.setTrackingMode('arcore');
+                  } else {
+                    Alert.alert(
+                      'Camera Permission Needed',
+                      'Camera permission is required for ARCore 3D freeform tracking. Ruler mode will be used.',
+                    );
+                  }
+                } else if (r.caps?.arcoreStatus === 'needs_install') {
+                  Alert.alert(
+                    'Google Play Services for AR Needed',
+                    'Google Play Services for AR is required on this phone for camera tracking. Please install or update it from Google Play to use ARCore, or continue with Ruler mode.',
+                  );
+                } else {
+                  Alert.alert(
+                    'ARCore Not Supported',
+                    'Camera tracking (ARCore) is not supported on this phone hardware. Ruler mode is active.',
+                  );
+                }
               }
             }}
           >

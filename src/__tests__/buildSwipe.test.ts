@@ -216,3 +216,26 @@ test('an ARCore swipe carries 6DoF camera poses and passes validation', () => {
   expect(s.stats.motion_detected).toBe(true);
   expect(validateSwipe(s)).toEqual([]);
 });
+
+test('hybrid fallback: if ARCore mode yields no points, falls back safely to ruler plannedLine', () => {
+  const base = synth({ yaw: 0, bWorld: earth, bias, seconds: 2 });
+  // ARCore failed to deliver points (empty array)
+  const rawNoArcore: RawRecording = {
+    ...base,
+    arcorePos: [],
+    arcoreRot: [],
+    tableZ: 0.0,
+  };
+  const s = buildSwipe(
+    rawNoArcore,
+    ctx({
+      trackingMode: 'arcore',
+      plannedLine: { start: [-0.1, 0, 0], end: [0.1, 0, 0] },
+    }),
+  );
+  expect(s.tracking_mode).toBe('ruler');
+  expect(s.reference_point).toBe('top_edge_centre_back');
+  expect(s.streams.orientation.source).toBe('game_rotation_vector');
+  expect(s.streams.position.rows.length).toBeGreaterThanOrEqual(2);
+  expect(validateSwipe(s)).toEqual([]);
+});

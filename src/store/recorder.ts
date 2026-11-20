@@ -24,6 +24,7 @@ import { apply, type Mat3 } from '../modules/capture/ironFit';
 import { buildSwipe, validateSwipe } from '../modules/capture/buildSwipe';
 import { baselineProblem, swipeProblems } from '../modules/capture/quality';
 import type { TrackingMode } from '../modules/capture/swipeFormat';
+import { requestCameraPermission } from '../modules/capture/permissions';
 import { useSync } from '../sync/useSync';
 import type { Vec3 } from '../utils/quaternion';
 
@@ -128,7 +129,14 @@ export const useRecorder = create<State>((set, get) => ({
   init: () => {
     try {
       const caps = MagnetCapture.getCapabilities();
-      set({ caps, capsError: null, profile: caps.sensors.magnetometerUncalibrated ? activeProfile() : null });
+      // Hybrid auto-detection: Default to ARCore if supported and ready, otherwise Ruler mode
+      const defaultMode: TrackingMode = caps?.arcoreStatus === 'ready' ? 'arcore' : 'ruler';
+      set({
+        caps,
+        capsError: null,
+        profile: caps.sensors.magnetometerUncalibrated ? activeProfile() : null,
+        trackingMode: defaultMode,
+      });
     } catch (e) {
       set({ capsError: String((e as Error).message ?? e) });
       return () => {};
@@ -180,12 +188,20 @@ export const useRecorder = create<State>((set, get) => ({
         baselineStart: b.fieldWorld,
         baselineRateHz: b.rateHz,
       };
-      const mode = get().trackingMode;
+      let mode = get().trackingMode;
       if (mode === 'arcore') {
-        try {
-          MagnetCapture.startArcore();
-        } catch (err) {
-          console.warn('ARCore start failed:', err);
+        const hasCamera = await requestCameraPermission();
+        if (!hasCamera) {
+          mode = 'ruler';
+          set({ trackingMode: 'ruler', message: 'Camera permission required for ARCore. Switched to Ruler mode.' });
+        } else {
+          try {
+            MagnetCapture.startArcore();
+          } catch (err) {
+            console.warn('ARCore start failed:', err);
+            mode = 'ruler';
+            set({ trackingMode: 'ruler', message: 'ARCore failed to start. Switched to Ruler mode.' });
+          }
         }
       }
       createScan({
@@ -240,13 +256,10 @@ export const useRecorder = create<State>((set, get) => ({
           sensor_offset_m: [0, 0, 0],
           sensor_offset_source: 'unknown',
         },
-        plannedLine:
-          mode === 'arcore'
-            ? null
-            : {
-                start: [mm(line.x0), mm(line.y0), mm(line.z)],
-                end: [mm(line.x1), mm(line.y1), mm(line.z)],
-              },
+        plannedLine: {
+          start: [mm(line.x0), mm(line.y0), mm(line.z)],
+          end: [mm(line.x1), mm(line.y1), mm(line.z)],
+        },
       });
       const problems = validateSwipe(swipe);
       const warnings = swipeProblems({
