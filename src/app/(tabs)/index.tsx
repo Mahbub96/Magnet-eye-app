@@ -15,10 +15,11 @@ import { requestCameraPermission } from '../../modules/capture/permissions';
 import { BASELINE_MS, rangeOf, SAFE_FRACTION, useLive, useRecorder } from '../../store/recorder';
 import { useSync } from '../../sync/useSync';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
+import { WhyCameraModal } from '../../ui/WhyCameraModal';
 import { MagnetMoved } from '../../ui/MagnetMoved';
 import { NoMagnetometer } from '../../ui/NoMagnetometer';
 import { Toast } from '../../ui/patterns';
-import { CoverageGrid, PaperMap, SpeedMeter, UncertaintyGauge } from '../../ui/scan';
+import { CoverageGrid, PaperMap, SpatialTrackingHUD, SpeedMeter, UncertaintyGauge } from '../../ui/scan';
 import {
   Banner,
   Button,
@@ -205,6 +206,7 @@ export default function ScanScreen() {
   const r = useRecorder();
   const [name, setName] = useState('');
   const [sheet, setSheet] = useState(false);
+  const [whyCameraVisible, setWhyCameraVisible] = useState(false);
   const [movedAt, setMovedAt] = useState<number | null>(null); // fit size the dialog was answered for
   const syncStatus = useSync((st) => st.status);
   // After each upload round, look at the open scan's latest fit for a moved magnet (PR-19).
@@ -278,20 +280,12 @@ export default function ScanScreen() {
           <Chip text="No scan" tone="warn" />
           <Pressable
             accessibilityRole="button"
-            onPress={async () => {
+            onPress={() => {
               if (r.trackingMode === 'arcore') {
                 r.setTrackingMode('ruler');
               } else {
                 if (r.caps?.arcoreStatus === 'ready') {
-                  const hasCamera = await requestCameraPermission();
-                  if (hasCamera) {
-                    r.setTrackingMode('arcore');
-                  } else {
-                    Alert.alert(
-                      'Camera Permission Needed',
-                      'Camera permission is required for ARCore 3D freeform tracking. Ruler mode will be used.',
-                    );
-                  }
+                  setWhyCameraVisible(true);
                 } else if (r.caps?.arcoreStatus === 'needs_install') {
                   Alert.alert(
                     'Google Play Services for AR Needed',
@@ -337,8 +331,14 @@ export default function ScanScreen() {
         {r.message ? <Banner tone={r.message === 'Scan saved' ? 'good' : 'warn'} text={r.message} /> : null}
         <Field label="Scan name" placeholder="e.g. Ring magnet" value={name} onChangeText={setName} />
         <Button title="Start a scan" disabled={!r.caps} onPress={() => setSheet(true)} />
+        <Text style={[type.small, { textAlign: 'center', color: color.textDim, marginTop: -space.xs }]}>
+          {r.trackingMode === 'arcore'
+            ? 'Camera tracking active · Move freely in 3D. Prefer a ruler? Tap Tracking above.'
+            : 'Ruler mode active · Guide phone along straight lines. Have ARCore? Tap Tracking above.'}
+        </Text>
         <BeforeYouScan
           visible={sheet}
+          trackingMode={r.trackingMode}
           measuring={r.phase === 'baseline'}
           baselineMs={BASELINE_MS}
           error={r.phase === 'idle' && r.message && r.message !== 'Scan saved' ? r.message : null}
@@ -348,6 +348,26 @@ export default function ScanScreen() {
             if (useRecorder.getState().scan) setSheet(false);
           }}
           onClose={() => setSheet(false)}
+        />
+        <WhyCameraModal
+          visible={whyCameraVisible}
+          onAllow={async () => {
+            setWhyCameraVisible(false);
+            const hasCamera = await requestCameraPermission();
+            if (hasCamera) {
+              r.setTrackingMode('arcore');
+            } else {
+              Alert.alert(
+                'Camera Permission Needed',
+                'Camera permission is required for ARCore 3D freeform tracking. Ruler mode will be used.',
+              );
+            }
+          }}
+          onUseRuler={() => {
+            setWhyCameraVisible(false);
+            r.setTrackingMode('ruler');
+          }}
+          onClose={() => setWhyCameraVisible(false)}
         />
       </Screen>
     );
@@ -393,22 +413,28 @@ export default function ScanScreen() {
         />
       ) : null}
 
-      <PaperMap done={r.done} current={current} suggested={suggested} />
-      {suggested ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-          <View style={{ width: 14, height: 2, backgroundColor: color.warn }} />
-          <Text style={[type.small, { flex: 1 }]}>
-            Suggested line (+{Math.round((fit?.next_swipe?.variance_reduction ?? 0.45) * 100)}% accuracy gain)
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => r.setLine({ x0: suggested.x0, y0: suggested.y0, x1: suggested.x1, y1: suggested.y1 })}
-            style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: color.surface2 }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: '500', color: color.text }}>Use it</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {r.trackingMode === 'arcore' ? (
+        <SpatialTrackingHUD swipeCount={r.swipeCount} />
+      ) : (
+        <>
+          <PaperMap done={r.done} current={current} suggested={suggested} />
+          {suggested ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+              <View style={{ width: 14, height: 2, backgroundColor: color.warn }} />
+              <Text style={[type.small, { flex: 1 }]}>
+                Suggested line (+{Math.round((fit?.next_swipe?.variance_reduction ?? 0.45) * 100)}% accuracy gain)
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => r.setLine({ x0: suggested.x0, y0: suggested.y0, x1: suggested.x1, y1: suggested.y1 })}
+                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: color.surface2 }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '500', color: color.text }}>Use it</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </>
+      )}
       {toasts}
       {r.message ? <Banner tone="info" text={r.message} /> : null}
 
@@ -455,15 +481,7 @@ export default function ScanScreen() {
         </>
       ) : null}
 
-      {r.trackingMode === 'arcore' ? (
-        <Card style={{ gap: space.xs, padding: space.md, backgroundColor: color.surface }}>
-          <Text style={{ fontSize: 14, fontWeight: '600', color: color.accent }}>ARCore Freeform 3D Tracking</Text>
-          <Text style={[type.small, { lineHeight: 18 }]}>
-            Move your phone freely across the magnet in curves, loops, or multiple passes at any height. ARCore camera VIO
-            tracks 6DoF position at 60 Hz.
-          </Text>
-        </Card>
-      ) : (
+      {r.trackingMode === 'arcore' ? null : (
         <>
           <Section title="Swipe line (mm on the paper)" />
           <View style={{ flexDirection: 'row', gap: space.sm }}>

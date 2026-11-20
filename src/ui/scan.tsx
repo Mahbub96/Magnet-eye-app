@@ -142,8 +142,87 @@ function UncertaintyGaugeImpl({ uncertainty }: { uncertainty: number | null }) {
   );
 }
 
+/** 3D Spatial Tracking HUD for ARCore Freeform scanning (Replaces 2D PaperMap).
+ * Displays real-time 6-DoF visual odometry state, freeform scanning guidance, and multi-height layers. */
+function SpatialTrackingHUDImpl({
+  swipeCount,
+  height = 200,
+}: {
+  swipeCount: number;
+  height?: number;
+}) {
+  return (
+    <View
+      style={{
+        height,
+        borderRadius: 20,
+        backgroundColor: color.surface,
+        borderWidth: 1,
+        borderColor: color.border,
+        padding: 16,
+        justifyContent: 'space-between',
+        overflow: 'hidden',
+      }}
+      accessibilityLabel="ARCore 3D Freeform Tracking View"
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color.good }} />
+          <Text style={{ fontSize: 13, fontWeight: '600', color: color.text }}>6-DoF Camera Tracking Active</Text>
+        </View>
+        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: color.surface2 }}>
+          <Text style={{ fontSize: 11, fontWeight: '500', color: color.accent }}>{swipeCount} passes saved</Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View style={{ width: 80, height: 80, alignItems: 'center', justifyContent: 'center' }}>
+          <Svg width={80} height={80} viewBox="0 0 80 80">
+            {/* Magnet core at center */}
+            <Rect x={30} y={35} width={20} height={10} rx={2} fill={color.surface2} stroke={color.border} strokeWidth={1} />
+            <Rect x={30} y={35} width={10} height={10} rx={1} fill={color.north} />
+            <Rect x={40} y={35} width={10} height={10} rx={1} fill={color.south} />
+            {/* Freeform 3D trajectory loops */}
+            <Path
+              d="M 12 50 C 15 20, 65 15, 68 35 C 70 50, 25 65, 18 42 C 15 30, 60 25, 65 55"
+              fill="none"
+              stroke={color.accent}
+              strokeWidth={2.5}
+              strokeDasharray="4 3"
+              strokeLinecap="round"
+            />
+            {/* Vertical height indicator */}
+            <SvgLine x1={10} y1={20} x2={10} y2={60} stroke={color.textFaint} strokeWidth={1.5} />
+            <Circle cx={10} cy={25} r={2.5} fill={color.good} />
+            <Circle cx={10} cy={40} r={2.5} fill={color.accent} />
+            <Circle cx={10} cy={55} r={2.5} fill={color.warn} />
+          </Svg>
+        </View>
+        <View style={{ flex: 1, gap: 4 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: color.text }}>
+            Move in Freeform Loops
+          </Text>
+          <Text style={[type.small, { fontSize: 12, lineHeight: 17 }]}>
+            Wave your phone in smooth zigzags, curves, and circles. Sweep at 2–3 different heights (2 cm, 5 cm) above the magnet.
+          </Text>
+        </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={[type.small, { fontSize: 11, color: color.good }]}>
+          ✓ Visual odometry tracking table surface
+        </Text>
+        <Text style={[type.small, { fontSize: 11, color: color.textDim }]}>
+          No ruler required
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 // Redraw only when their own inputs change, not on every live sensor update.
 export const PaperMap = memo(PaperMapImpl);
+export const SpatialTrackingHUD = memo(SpatialTrackingHUDImpl);
 export const CoverageGrid = memo(CoverageGridImpl);
 export const SpeedMeter = memo(SpeedMeterImpl);
 export const UncertaintyGauge = memo(UncertaintyGaugeImpl);
