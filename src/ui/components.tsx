@@ -1,18 +1,10 @@
 import type { ReactNode } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  type TextInputProps,
-  View,
-  type ViewStyle,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, type TextInputProps, View, type ViewStyle } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { color, radius, space, type } from './theme';
+import { Text, TextInput } from './Text';
 
 export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
   return (
@@ -46,7 +38,7 @@ export function Card({ children, style }: { children: ReactNode; style?: ViewSty
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-type ButtonKind = 'primary' | 'secondary' | 'danger';
+type ButtonKind = 'primary' | 'secondary' | 'danger' | 'ghost';
 export function Button({
   title,
   onPress,
@@ -62,7 +54,7 @@ export function Button({
   busy?: boolean;
   style?: ViewStyle;
 }) {
-  const bg = kind === 'primary' ? color.accent : color.surface2;
+  const bg = kind === 'primary' ? color.accent : kind === 'ghost' ? 'transparent' : color.surface2;
   const fg = kind === 'primary' ? color.accentText : kind === 'danger' ? color.bad : color.text;
   return (
     <Pressable
@@ -72,6 +64,7 @@ export function Button({
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: bg, opacity: disabled ? 0.4 : pressed ? 0.8 : 1 },
+        kind === 'ghost' ? { borderWidth: 1, borderColor: color.border } : null,
         style,
       ]}
     >

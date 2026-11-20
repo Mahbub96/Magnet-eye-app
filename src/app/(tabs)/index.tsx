@@ -1,12 +1,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, View } from 'react-native';
+
 
 import { canScan } from '../../modules/capture/deviceCheck';
 import { BACKGROUND_MAX_UT, deg, FLAT_MAX_RAD, tiltRad } from '../../modules/capture/quality';
 import { BASELINE_MS, rangeOf, SAFE_FRACTION, useRecorder } from '../../store/recorder';
 import { BeforeYouScan } from '../../ui/BeforeYouScan';
 import { NoMagnetometer } from '../../ui/NoMagnetometer';
+import { Toast } from '../../ui/patterns';
 import {
   Banner,
   Button,
@@ -20,6 +22,7 @@ import {
   Title,
 } from '../../ui/components';
 import { color, space, type } from '../../ui/theme';
+import { Text } from '../../ui/Text';
 
 function Sparkline({ values, limit }: { values: number[]; limit: number }) {
   const max = Math.max(limit * 0.25, ...values, 1);
@@ -163,10 +166,8 @@ export default function ScanScreen() {
         <Sparkline values={r.history} limit={limit} />
       </Card>
 
-      {nearLimit ? <Banner tone="warn" text="Near the sensor limit — lift the phone or move away from the magnet." /> : null}
-      {notFlat ? (
-        <Banner tone="warn" text={`Phone tilted ${deg(tilt).toFixed(0)}° — lay it flat on the paper, screen up.`} />
-      ) : null}
+      {nearLimit ? <Toast text="Near the sensor limit — lift the phone or move away from the magnet" /> : null}
+      {notFlat ? <Toast text={`Phone tilted ${deg(tilt).toFixed(0)}° — lay it flat on the paper, screen up`} /> : null}
       {!inScan && live && field > BACKGROUND_MAX_UT ? (
         <Banner
           tone="warn"

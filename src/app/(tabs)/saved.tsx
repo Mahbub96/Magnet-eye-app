@@ -1,10 +1,10 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Text } from 'react-native';
 
 import { listScans, type ScanRow } from '../../db/scans';
 import { Card, Row, Screen, Title } from '../../ui/components';
 import { type } from '../../ui/theme';
+import { Text } from '../../ui/Text';
 
 export default function SavedScreen() {
   const [scans, setScans] = useState<ScanRow[]>([]);

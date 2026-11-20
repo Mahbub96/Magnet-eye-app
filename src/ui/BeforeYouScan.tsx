@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Animated, Easing, View } from 'react-native';
 
 import { Banner, Button, TintIcon } from './components';
+import { Sheet } from './patterns';
 import { color, space, type } from './theme';
+import { Text } from './Text';
 
 const TIPS: [string, string, string][] = [
   ['Tape the magnet down', 'It must not move between swipes.', color.accent],
@@ -29,7 +30,6 @@ export function BeforeYouScan({
   onStart: () => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
   const [progress] = useState(() => new Animated.Value(0));
   useEffect(() => {
     if (!measuring) {
@@ -47,24 +47,7 @@ export function BeforeYouScan({
   }, [measuring, baselineMs, progress]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={measuring ? undefined : onClose} statusBarTranslucent>
-      <Pressable
-        accessibilityLabel="Close"
-        style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' }}
-        onPress={measuring ? undefined : onClose}
-      />
-      <View
-        style={{
-          backgroundColor: color.surface,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
-          paddingHorizontal: 20,
-          paddingTop: space.md,
-          paddingBottom: 20 + insets.bottom,
-          gap: space.lg,
-        }}
-      >
-        <View style={{ alignSelf: 'center', width: 36, height: 4, borderRadius: 2, backgroundColor: color.border }} />
+    <Sheet visible={visible} onClose={onClose} locked={measuring}>
         <View style={{ gap: space.xs }}>
           <Text style={[type.title, { fontSize: 20 }]}>Before you scan</Text>
           <Text style={[type.small, { fontSize: 13 }]}>Four things that make a scan accurate and safe.</Text>
@@ -105,7 +88,6 @@ export function BeforeYouScan({
 
         {error && !measuring ? <Banner tone="warn" text={error} /> : null}
         <Button title={measuring ? 'Measuring…' : error ? 'Try again' : 'Start scanning'} busy={measuring} onPress={onStart} />
-      </View>
-    </Modal>
+    </Sheet>
   );
 }

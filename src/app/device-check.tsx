@@ -1,13 +1,16 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { View } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import MagnetCapture, { type Capabilities } from '../../modules/magnet-capture/src';
 import { ONBOARDED, setSetting } from '../db/settings';
 import { canScan, type CheckStatus, deviceChecks } from '../modules/capture/deviceCheck';
 import { Banner, Button, ProgressBar, TintIcon } from '../ui/components';
+import { ListCard, ListRow } from '../ui/patterns';
 import { color, space, type } from '../ui/theme';
+import { Text } from '../ui/Text';
 
 const STATUS: Record<CheckStatus | 'testing', { label: string; tint: string }> = {
   ready: { label: 'Ready', tint: color.good },
@@ -19,6 +22,7 @@ const STATUS: Record<CheckStatus | 'testing', { label: string; tint: string }> =
 
 /** Figma "02 Device check". Every value comes from the phone's own sensor report. */
 export default function DeviceCheckScreen() {
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const caps = useMemo<Capabilities | Error>(() => {
     try {
       return MagnetCapture.getCapabilities();
@@ -38,7 +42,8 @@ export default function DeviceCheckScreen() {
 
   const finish = () => {
     setSetting(ONBOARDED, '1');
-    if (!(caps instanceof Error) && canScan(caps)) router.replace('/');
+    if (from === 'settings' && router.canGoBack()) router.back();
+    else if (!(caps instanceof Error) && canScan(caps)) router.replace('/');
     else router.replace('/no-magnetometer');
   };
 
@@ -58,32 +63,21 @@ export default function DeviceCheckScreen() {
         {caps instanceof Error ? (
           <Banner tone="bad" text={`Could not read the sensors: ${caps.message}`} />
         ) : (
-          <View style={{ backgroundColor: color.surface, borderRadius: 16 }}>
+          <ListCard>
             {checks.map((c, i) => {
               const st = STATUS[i < shown ? c.status : 'testing'];
               return (
-                <View
+                <ListRow
                   key={c.key}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
-                    paddingHorizontal: 16,
-                    paddingVertical: 14,
-                    borderTopWidth: i ? 1 : 0,
-                    borderTopColor: color.border,
-                  }}
-                >
-                  <TintIcon tint={st.tint} round />
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '500', color: color.text }}>{c.title}</Text>
-                    <Text style={type.small}>{i < shown ? c.detail : 'Testing…'}</Text>
-                  </View>
-                  <Text style={{ fontSize: 12, fontWeight: '500', color: st.tint }}>{st.label}</Text>
-                </View>
+                  icon={<TintIcon tint={st.tint} round />}
+                  title={c.title}
+                  detail={i < shown ? c.detail : 'Testing…'}
+                  trailing={st.label}
+                  trailingTint={st.tint}
+                />
               );
             })}
-          </View>
+          </ListCard>
         )}
 
         <View style={{ flex: 1 }} />

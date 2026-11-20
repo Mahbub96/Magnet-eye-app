@@ -23,6 +23,32 @@ Run lint, typecheck and tests before opening a pull request.
   Never edit it by hand.
 - This app has a custom native module, so it needs a development build; Expo Go cannot run it.
 
+## Screens and navigation
+
+Screens follow the Figma file "Magnet Eye – App UI" (numbers below are its frame numbers). Each
+screen is built in the roadmap phase that delivers its feature; see `../docs/Magnet Eye – UI
+Completion Plan.md`.
+
+| Route | Figma | Reached from |
+| --- | --- | --- |
+| `/welcome` | 01 Welcome | first launch (the tabs redirect here until the first run is done) |
+| `/device-check` | 02 Checking your phone | Welcome → Get started; Settings → Re-run phone check |
+| `/no-magnetometer` | 11 Phone limitation | phone check, when the phone has no magnetometer |
+| `/` (tab Scan) | 06 Scan | tabs; shows 11 in place when there is no magnetometer |
+| Scan → Start a scan | 05 Before you scan (sheet) | Scan tab, before the baseline |
+| `/saved` (tab Saved) | 08 Saved scans | tabs; 11 → View saved scans |
+| `/scan/[id]` | 08 detail, 14 Export (JSON only) | a saved scan |
+| `/settings` (tab Settings) | 09 Settings | tabs |
+
+Not built yet: 03 Your phone can scan and 04 Calibrate (Phase 5), 07 Results (Phase 8),
+10 Camera access is off (Phase 6), 12 Needs a connection (Phase 4), 13 Did the magnet move?
+(Phase 7).
+
+UI building blocks live in `src/ui/`: `theme.ts` (tokens and the Inter font), `Text.tsx`
+(always use this `Text`, it sets Inter), `components.tsx` (buttons, cards, chips, fields),
+`patterns.tsx` (sheet, edge-state screen, list card, stepper, metric card, warning strip) and
+`icons.tsx` (the eye mark and tab icons as SVG).
+
 ## Project rules
 
 - Planning documents (PRD, SRS, Architecture, Roadmap, Challenges) live in `../docs/`. The swipe

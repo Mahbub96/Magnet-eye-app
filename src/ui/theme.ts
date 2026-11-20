@@ -1,5 +1,8 @@
 /** Design tokens read from the Figma file "Magnet Eye – App UI" (dark, one accent, N/S in red/blue).
- * Font in Figma is Inter; the app uses the system font until fonts are bundled. */
+ * Font: Inter, bundled in four weights (400, 500, 600, 700) as one Android font family, so
+ * `fontWeight` picks the face. Use `Text` from `./Text`, which sets it. */
+export const font = 'Inter';
+
 export const color = {
   bg: '#0E1116',
   surface: '#161A21',

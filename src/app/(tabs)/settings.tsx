@@ -1,11 +1,12 @@
 import * as Application from 'expo-application';
+import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Text } from 'react-native';
 
 import MagnetCapture, { type Capabilities, type SensorKey } from '../../../modules/magnet-capture/src';
 import { FORMAT_VERSION } from '../../modules/capture/swipeFormat';
 import { Banner, Card, Row, Screen, Section, Title } from '../../ui/components';
 import { type } from '../../ui/theme';
+import { Text } from '../../ui/Text';
 
 const LABELS: Record<SensorKey, [string, string]> = {
   magnetometerUncalibrated: ['Magnetometer (raw)', 'Needed: readings without Android’s jumps'],
@@ -59,6 +60,15 @@ export default function SettingsScreen() {
           />
         </>
       )}
+      <Section title="Setup" />
+      <Card>
+        <Row
+          title="Re-run phone check"
+          sub="Test the sensors again, e.g. after an Android update"
+          right="›"
+          onPress={() => router.push({ pathname: '/device-check', params: { from: 'settings' } })}
+        />
+      </Card>
       <Section title="About" />
       <Text style={type.small}>
         Magnet Eye {Application.nativeApplicationVersion ?? 'dev'} · swipe format v{FORMAT_VERSION} · MIT · open source

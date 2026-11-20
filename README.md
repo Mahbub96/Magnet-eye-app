@@ -71,3 +71,8 @@ modules/magnet-capture/  Kotlin sensor module
 ## Licence
 
 MIT
+
+## Fonts
+
+Inter, bundled in `assets/fonts/`, is licensed under the SIL Open Font License 1.1
+(`assets/fonts/OFL.txt`).

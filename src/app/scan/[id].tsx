@@ -2,11 +2,13 @@ import { File } from 'expo-file-system';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Alert, Pressable, View } from 'react-native';
+
 
 import { deleteScan, exportScan, getScan, listSwipes } from '../../db/scans';
 import { Banner, Button, Row, Screen, Section, Stat, Title } from '../../ui/components';
 import { color, space, type } from '../../ui/theme';
+import { Text } from '../../ui/Text';
 
 async function share(uri: string, title: string) {
   if (!(await Sharing.isAvailableAsync())) {

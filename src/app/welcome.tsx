@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
-import { Image, Text, View } from 'react-native';
+import { View } from 'react-native';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../ui/components';
+import { Mark } from '../ui/icons';
 import { color, space, type } from '../ui/theme';
+import { Text } from '../ui/Text';
 
 const HIGHLIGHTS: [string, string][] = [
   ['No extra hardware', 'Uses the sensors already in your phone'],
@@ -17,11 +20,7 @@ export default function WelcomeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: color.bg }}>
       <View style={{ flex: 1, paddingHorizontal: 20, paddingVertical: space.xl }}>
         <View style={{ flex: 1 }} />
-        <Image
-          source={require('../../assets/splash-icon.png')}
-          style={{ width: 120, height: 120, marginLeft: -10 }}
-          accessibilityIgnoresInvertColors
-        />
+        <Mark size={120} />
         <Text style={{ marginTop: 32, fontSize: 32, fontWeight: '700', color: color.text, letterSpacing: -0.6 }}>
           Magnet Eye
         </Text>
